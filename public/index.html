@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>arbhar — unofficial library manager</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <!-- ===================== SETUP / FOLDER PICKER ===================== -->
+  <section id="setup" class="setup">
+    <div class="setup-card">
+      <div class="brandmark">
+        <div class="brand-text">
+          <span class="brand-arbhar-title">arbhar</span>
+          <span class="brand-sub">unofficial library manager</span>
+        </div>
+      </div>
+
+      <p class="setup-lead">Choose the root folder of your arbhar library
+        (the mounted USB drive, or an <code>arbhar-sample-library</code> folder).</p>
+
+      <div class="picker">
+        <div class="picker-bar">
+          <button id="pk-up" class="btn ghost" title="Parent folder">↑</button>
+          <input id="pk-path" class="path-input" spellcheck="false" />
+          <button id="pk-go" class="btn ghost">Go</button>
+        </div>
+        <div class="picker-body">
+          <ul id="pk-shortcuts" class="shortcuts"></ul>
+          <ul id="pk-list" class="dir-list"></ul>
+        </div>
+        <div id="pk-status" class="picker-status"></div>
+      </div>
+
+      <div class="setup-actions">
+        <label class="chk"><input type="checkbox" id="pk-scaffold" />
+          Create the full structure if missing (6 libraries + scenes)</label>
+        <div class="setup-buttons">
+          <button id="pk-close" class="btn ghost hidden">Close</button>
+          <button id="pk-open" class="btn primary" disabled>Open this library</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== MAIN APP ===================== -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="brandmark small">
+        <span class="brand-arbhar">arbhar</span>
+        <span class="brand-sub-inline">— unofficial library manager</span>
+      </div>
+      <div class="root-info">
+        <span id="root-path" class="root-path"></span>
+        <button id="change-root" class="btn ghost sm">Change</button>
+      </div>
+    </header>
+
+    <nav class="banks">
+      <div id="lib-tabs" class="tabs"></div>
+    </nav>
+
+    <main class="workspace">
+      <!-- Reserve drawer -->
+      <aside class="staging" id="staging-panel">
+        <div class="panel-head">
+          <h2>Reserve</h2>
+          <span class="hint">drag samples here →</span>
+        </div>
+        <div id="staging-bar" class="staging-bar">
+          <span class="stg-path">samples</span>
+          <button id="stg-mkdir" class="mini" title="New folder at the root">＋ folder</button>
+        </div>
+        <div id="staging-drop" class="dropzone staging-drop">
+          <ul id="staging-list" class="stage-list"></ul>
+          <p class="staging-drop-hint">Drop .wav files or a whole folder here<br /><em>(from Finder)</em></p>
+        </div>
+      </aside>
+
+      <!-- 6×6 grid -->
+      <section class="grid-wrap">
+        <div class="grid-head">
+          <h2 id="grid-title">Library 1</h2>
+          <span class="grid-legend">rows = <b>bank</b> · columns = <b>layer</b></span>
+          <span class="kbd-hint"><kbd>↑↓←→</kbd> navigate · <kbd>Tab</kbd> tab · <kbd>space</kbd> play/pause</span>
+        </div>
+        <div id="grid-banner" class="grid-banner hidden"></div>
+        <div id="grid" class="grid"></div>
+        <div id="scene-view" class="scene-view hidden">
+          <div id="scene-controls" class="scene-controls"></div>
+          <div id="scene-grid" class="scene-grid"></div>
+        </div>
+      </section>
+
+      <!-- Inspector / editor -->
+      <aside class="inspector" id="inspector">
+        <div class="panel-head">
+          <h2 id="insp-title">Editor</h2>
+          <span id="insp-sub" class="hint"></span>
+        </div>
+
+        <div id="editor" class="editor hidden">
+          <canvas id="wave" class="wave"></canvas>
+          <div id="edit-info" class="edit-info"></div>
+          <div class="edit-tools">
+            <div class="edit-row">
+              <label>Fade in</label>
+              <input type="range" id="fade-in" min="0" max="2000" value="0" />
+              <span id="fade-in-val">0 ms</span>
+            </div>
+            <div class="edit-row">
+              <label>Fade out</label>
+              <input type="range" id="fade-out" min="0" max="2000" value="0" />
+              <span id="fade-out-val">0 ms</span>
+            </div>
+            <div class="edit-row">
+              <label class="chk-inline"><input type="checkbox" id="normalize" /> Normalize</label>
+              <div class="stepper">
+                <input type="number" id="norm-db" class="db-input" step="0.5" min="-24" max="0" />
+                <div class="stepper-btns">
+                  <button type="button" id="db-up" class="stepper-btn" tabindex="-1">▲</button>
+                  <button type="button" id="db-down" class="stepper-btn" tabindex="-1">▼</button>
+                </div>
+              </div>
+              <span class="db-unit">dB</span>
+            </div>
+            <div class="edit-btns">
+              <button id="edit-preview" class="btn sm">▶ Selection</button>
+              <button id="edit-reset" class="btn sm ghost">Reset</button>
+              <button id="edit-apply" class="btn sm primary">Apply</button>
+            </div>
+            <p class="edit-hint">Drag the waveform edges to trim. “Apply” overwrites the
+              file (the original goes to the trash).</p>
+          </div>
+        </div>
+
+        <div id="insp-drop" class="dropzone insp-drop hidden">
+          <span>Drop here to replace this slot</span>
+        </div>
+        <ul id="insp-list" class="file-list"></ul>
+        <p id="insp-empty" class="empty-note">Click a slot / tile to listen and edit.</p>
+      </aside>
+    </main>
+
+    <!-- persistent audio player -->
+    <footer class="player" id="player-bar">
+      <button id="pl-toggle" class="btn play-btn" disabled>▶</button>
+      <div class="pl-meta">
+        <span id="pl-name" class="pl-name">—</span>
+        <div class="pl-track"><div id="pl-progress" class="pl-progress"></div></div>
+      </div>
+      <span id="pl-time" class="pl-time">0:00</span>
+      <audio id="audio" preload="metadata"></audio>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

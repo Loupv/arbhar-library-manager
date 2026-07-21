@@ -1,0 +1,29 @@
+{
+  "name": "arbhar-library-editor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Unofficial lightweight sample-library manager for the Instruo arbhar module (Firmware 2.0)",
+  "main": "server.js",
+  "bin": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "pkg . --out-path dist"
+  },
+  "pkg": {
+    "assets": [
+      "public/**/*"
+    ],
+    "targets": [
+      "node22-macos-arm64",
+      "node22-macos-x64",
+      "node22-win-x64"
+    ],
+    "outputPath": "dist"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.3.0"
+  }
+}

@@ -6,6 +6,11 @@ files on disk (the arbhar's USB drive, or a local folder). Zero dependencies, no
 
 ![arbhar — unofficial library manager](docs/screenshot.png)
 
+### ▶ Try it in your browser — no install
+**<https://loupv.github.io/arbhar-library-manager/>** — nothing to download, runs entirely
+on your machine (files never leave your computer). **Chromium browsers only** (Chrome ·
+Edge · Brave). Prefer a native app or Firefox/Safari? Use the downloads below.
+
 > **Unofficial project** — not affiliated with, endorsed by, or supported by Instruō.
 > "arbhar" and "Instruō" are trademarks of Instruō Ltd. No Instruō sample content or
 > documentation is included here.

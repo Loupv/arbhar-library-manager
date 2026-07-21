@@ -143,6 +143,12 @@ html, body {
 .staging-drop-hint em { color: var(--gold-dim); font-style: normal; }
 .staging.has-items .staging-drop-hint { display: none; }
 .staging-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; margin: 4px 0 10px; }
+.stg-open-btn {
+  flex: 0 0 auto; margin-top: 10px; width: 100%; padding: 8px; border-radius: 8px;
+  border: 1px solid var(--line-soft); background: transparent; color: var(--muted);
+  font: inherit; font-size: 12px; letter-spacing: .02em; cursor: pointer; transition: all .13s ease;
+}
+.stg-open-btn:hover { border-color: var(--gold-dim); color: var(--gold-br); }
 .staging-bar .mini { border: 1px solid var(--line-soft); border-radius: 6px; padding: 3px 8px; font-size: 12px; white-space: nowrap; }
 .staging-bar .mini:hover { border-color: var(--gold-dim); }
 .stg-path { flex: 1; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

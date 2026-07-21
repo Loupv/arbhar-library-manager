@@ -749,13 +749,8 @@ async function loadStaging() {
   const ul = $('#staging-list');
   ul.innerHTML = '';
   $('#stg-path').textContent = reserveHandle ? reserveHandle.name : 'no folder';
-  if (!reserveHandle) {                       // no reserve folder chosen yet
-    $('#staging-panel').classList.add('has-items');
-    const li = document.createElement('li');
-    li.className = 'dir-item';
-    li.innerHTML = '<span class="nm">Choose a reserve folder…</span>';
-    li.onclick = chooseReserve;
-    ul.appendChild(li);
+  if (!reserveHandle) {                       // no reserve yet → the bottom button is the CTA
+    $('#staging-panel').classList.remove('has-items');
     return;
   }
   const total = await renderNode('', 0, ul);

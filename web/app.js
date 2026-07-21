@@ -341,6 +341,7 @@ async function chooseReserve() {
 }
 $('#pick-root').onclick = chooseRoot;
 $('#pick-reserve').onclick = chooseReserve;
+$('#stg-open').onclick = chooseReserve;   // pick / change the reserve folder from inside the app
 // (#enter handler is wired in boot() so it can re-grant folder permission first)
 
 /* ===================== APP ===================== */
@@ -747,6 +748,7 @@ async function deleteFile(f, bank, cell) {
 async function loadStaging() {
   const ul = $('#staging-list');
   ul.innerHTML = '';
+  $('#stg-path').textContent = reserveHandle ? reserveHandle.name : 'no folder';
   if (!reserveHandle) {                       // no reserve folder chosen yet
     $('#staging-panel').classList.add('has-items');
     const li = document.createElement('li');

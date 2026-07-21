@@ -749,7 +749,8 @@ async function loadStaging() {
   const ul = $('#staging-list');
   ul.innerHTML = '';
   $('#stg-path').textContent = reserveHandle ? reserveHandle.name : 'no folder';
-  if (!reserveHandle) {                       // no reserve yet → the bottom button is the CTA
+  $('#stg-open').classList.toggle('hidden', !!reserveHandle);   // only offer the picker when none is set
+  if (!reserveHandle) {
     $('#staging-panel').classList.remove('has-items');
     return;
   }

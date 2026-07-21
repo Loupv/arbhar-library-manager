@@ -595,11 +595,21 @@ function toggleFolder(rel) {
   }
   loadStaging();
 }
+// Create one or several folders (comma- or newline-separated) under `parent`.
+async function createFolders(parent, raw) {
+  const names = (raw || '').split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+  if (!names.length) return;
+  let ok = 0;
+  for (const name of names) {
+    try { await api.post('/api/staging/mkdir', { path: parent, name }); ok++; }
+    catch (e) { toast(e.message, true); }
+  }
+  if (parent) state.expanded.add(parent);
+  loadStaging();
+  if (ok) toast(ok === 1 ? 'Folder created.' : `${ok} folders created.`);
+}
 async function mkdirIn(parent) {
-  const name = prompt('New subfolder name:');
-  if (!name || !name.trim()) return;
-  try { await api.post('/api/staging/mkdir', { path: parent, name: name.trim() }); state.expanded.add(parent); loadStaging(); toast('Folder created.'); }
-  catch (e) { toast(e.message, true); }
+  createFolders(parent, prompt('New subfolder name(s) — separate several with commas:'));
 }
 async function delStaged(rel, isDir, name) {
   try {
@@ -647,11 +657,8 @@ function wireFolderDrop(el, folderRel, hl) {
   });
 }
 
-$('#stg-mkdir').onclick = async () => {
-  const name = prompt('New folder name:');
-  if (!name || !name.trim()) return;
-  try { await api.post('/api/staging/mkdir', { path: '', name: name.trim() }); loadStaging(); toast('Folder created.'); }
-  catch (e) { toast(e.message, true); }
+$('#stg-mkdir').onclick = () => {
+  createFolders('', prompt('New folder name(s) — separate several with commas:'));
 };
 
 /* ===================== DRAG & DROP ===================== */

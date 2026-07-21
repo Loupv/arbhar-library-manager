@@ -1,6 +1,6 @@
 {
   "name": "arbhar-library-editor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Unofficial lightweight sample-library manager for the Instruo arbhar module (Firmware 2.0)",
   "main": "server.js",

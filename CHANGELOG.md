@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.1] — 2026-07-21
+
+### Added
+- Create **several folders at once** in the reserve (comma-separated names in `+ folder`).
+
+### Changed
+- Drop hint names the OS file manager (**Finder** on macOS, **File Explorer** on Windows).
+- Removed the `rows = bank · columns = layer` header legend for a cleaner header.
+
 ## [1.0.0] — 2026-07-21
 
 First public release.
@@ -32,4 +41,5 @@ First public release.
 - **Zero runtime dependencies**; standalone macOS/Windows binaries built via
   [`@yao-pkg/pkg`](https://github.com/yao-pkg/pkg) and released through GitHub Actions.
 
+[1.0.1]: https://github.com/Loupv/arbhar-library-manager/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Loupv/arbhar-library-manager/releases/tag/v1.0.0

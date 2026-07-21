@@ -4,6 +4,8 @@ A lightweight sample-library manager for the **Instruō arbhar** granular module
 (Firmware 2.0). A tiny local Node server serves a dark/gold browser UI and edits the real
 files on disk (the arbhar's USB drive, or a local folder). Zero dependencies, no build step.
 
+![arbhar — unofficial library manager](docs/screenshot.png)
+
 > **Unofficial project** — not affiliated with, endorsed by, or supported by Instruō.
 > "arbhar" and "Instruō" are trademarks of Instruō Ltd. No Instruō sample content or
 > documentation is included here.

@@ -3,6 +3,14 @@
 /* arbhar library editor — front-end. Vanilla JS, no build step. */
 
 const $ = (sel) => document.querySelector(sel);
+
+// Name the OS file manager in UI hints (Finder / File Explorer / …).
+(() => {
+  const p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || '';
+  const name = /win/i.test(p) ? 'File Explorer' : /mac/i.test(p) ? 'Finder' : 'your file manager';
+  document.querySelectorAll('.file-mgr').forEach((el) => { el.textContent = name; });
+})();
+
 const api = {
   async get(path) { const r = await fetch(path); if (!r.ok) throw new Error((await r.json()).error || r.statusText); return r.json(); },
   async post(path, body) {

@@ -435,21 +435,20 @@ function escapeHtml(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<'
 function renderInspector() {
   const empty = $('#insp-empty');
   const list = $('#insp-list');
-  const drop = $('#insp-drop');
   list.innerHTML = '';
   if (!state.selected) {
-    empty.classList.remove('hidden'); drop.classList.add('hidden');
+    empty.classList.remove('hidden');
     clearEditor();
     return;
   }
-  empty.classList.add('hidden'); drop.classList.remove('hidden');
+  empty.classList.add('hidden');
   const { bank, cell } = state.selected;
   const c = cellAt(bank, cell) || { files: [] };
   c.files.forEach((f) => list.appendChild(fileRow(f, bank, cell)));
   if (!c.files.length) {
     const p = document.createElement('p');
     p.className = 'empty-note'; p.style.marginTop = '20px';
-    p.textContent = 'Empty slot — drop a sample or drag one from the reserve.';
+    p.textContent = 'Empty slot. Drop a sample on the tile, or drag one from the reserve.';
     list.appendChild(p);
   }
 }
@@ -798,39 +797,7 @@ reservePanel.addEventListener('drop', async (e) => {
   loadStaging();
 });
 
-// Inspector dropzone → REPLACE the selected slot
-const inspDrop = $('#insp-drop');
-['dragover', 'dragenter'].forEach((ev) => inspDrop.addEventListener(ev, (e) => {
-  if (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes('application/x-arbhar-staging')) {
-    e.preventDefault(); inspDrop.classList.add('over');
-  }
-}));
-['dragleave'].forEach((ev) => inspDrop.addEventListener(ev, () => inspDrop.classList.remove('over')));
-inspDrop.addEventListener('drop', async (e) => {
-  inspDrop.classList.remove('over');
-  if (!state.selected) return;
-  const { bank, cell } = state.selected;
-  const stg = e.dataTransfer.getData('application/x-arbhar-staging');
-  if (stg) {
-    e.preventDefault();
-    const item = JSON.parse(stg);
-    if (item.isDir) return;
-    try { await api.post('/api/copy-from-staging', { path: item.path, kind: state.kind, lib: state.lib, bank, cell, replace: true }); toast('Slot replaced.'); await loadGrid(); selectSlot(bank, cell, { play: false }); }
-    catch (err) { toast(err.message, true); }
-    return;
-  }
-  if (e.dataTransfer.files.length) {
-    e.preventDefault();
-    const files = [...e.dataTransfer.files];
-    let ok = 0;
-    for (let i = 0; i < files.length; i++) {
-      const rep = i === 0 ? '&replace=1' : '';
-      ok += await uploadFiles([files[i]], `dest=slot&kind=${state.kind}&lib=${state.lib}&bank=${bank}&cell=${cell}${rep}`);
-    }
-    if (ok) toast('Slot replaced.');
-    await loadGrid(); selectSlot(bank, cell, { play: false });
-  }
-});
+// (Slot replacement is done by dropping directly on the grid pads / scene tiles.)
 
 // prevent the browser from opening files dropped outside dropzones
 window.addEventListener('dragover', (e) => e.preventDefault());

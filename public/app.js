@@ -173,9 +173,6 @@ async function selectTab(kind, lib) {
   document.querySelector('.workspace').classList.toggle('scenes-mode', kind === 'scene');
   $('#grid').classList.toggle('hidden', kind === 'scene');
   $('#scene-view').classList.toggle('hidden', kind !== 'scene');
-  document.querySelector('.grid-legend').innerHTML = kind === 'scene'
-    ? ''
-    : 'rows = <b>bank</b> · columns = <b>layer</b>';
   await loadGrid();
 }
 

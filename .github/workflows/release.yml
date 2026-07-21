@@ -28,18 +28,26 @@ jobs:
       - name: Build binaries
         run: npx --yes @yao-pkg/pkg@latest . --out-path dist
 
-      - name: List output
-        run: ls -la dist
+      # Ship .zip archives, not bare files: macOS binaries have no extension and lose
+      # their executable bit over a raw download — zipping keeps +x and makes the asset clear.
+      - name: Package
+        run: |
+          cd dist
+          chmod +x arbhar-library-editor-macos-arm64 arbhar-library-editor-macos-x64
+          zip -j arbhar-macOS-AppleSilicon.zip arbhar-library-editor-macos-arm64
+          zip -j arbhar-macOS-Intel.zip        arbhar-library-editor-macos-x64
+          zip -j arbhar-Windows-x64.zip        arbhar-library-editor-win-x64.exe
+          ls -la
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: arbhar-binaries
-          path: dist/*
+          path: dist/*.zip
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: dist/*.zip
           generate_release_notes: true

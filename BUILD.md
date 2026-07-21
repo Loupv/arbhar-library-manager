@@ -28,8 +28,10 @@ Targets are configured in `package.json` → `pkg.targets`. Add/remove as needed
 
 ## How recipients run it
 
-Double-click, or run from a terminal. It starts a local server and opens the app in the
-default browser (`http://localhost:4173`). Closing the terminal/console window quits it.
+Release downloads are **`.zip`** archives (macOS binaries have no extension and lose their
+executable bit over a raw download — the zip keeps it). Unzip, then double-click or run from
+a terminal. It starts a local server and opens the app in the default browser
+(`http://localhost:4173`). Closing the terminal/console window quits it.
 
 Because the binaries are **unsigned**, the OS will warn on first launch:
 

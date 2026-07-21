@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.2] — 2026-07-21
+
+### Fixed
+- macOS binaries were killed on launch (`zsh: killed`) because cross-building on Linux
+  left them unsigned — Apple Silicon refuses to run unsigned executables. Releases now
+  build on a macOS runner, so pkg ad-hoc code-signs the mac binaries and they run
+  (first launch: right-click → Open).
+
 ## [1.0.1] — 2026-07-21
 
 ### Added
@@ -41,5 +49,6 @@ First public release.
 - **Zero runtime dependencies**; standalone macOS/Windows binaries built via
   [`@yao-pkg/pkg`](https://github.com/yao-pkg/pkg) and released through GitHub Actions.
 
+[1.0.2]: https://github.com/Loupv/arbhar-library-manager/releases/tag/v1.0.2
 [1.0.1]: https://github.com/Loupv/arbhar-library-manager/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Loupv/arbhar-library-manager/releases/tag/v1.0.0

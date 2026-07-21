@@ -15,7 +15,10 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Must run on macOS: pkg ad-hoc code-signs the macOS binaries here, otherwise
+    # Apple Silicon kills unsigned executables ("zsh: killed"). pkg still cross-builds
+    # the Windows .exe from macOS (no native deps).
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -23,10 +26,13 @@ jobs:
         with:
           node-version: 22
 
-      # pkg cross-builds every target in package.json (mac arm64 / mac x64 / win x64)
-      # from a single Linux runner — the app has no native dependencies.
-      - name: Build binaries
+      - name: Build binaries (mac arm64 / mac x64 / win x64)
         run: npx --yes @yao-pkg/pkg@latest . --out-path dist
+
+      - name: Verify macOS code signatures
+        run: |
+          codesign -dv dist/arbhar-library-editor-macos-arm64 2>&1 | grep -i adhoc
+          codesign -dv dist/arbhar-library-editor-macos-x64   2>&1 | grep -i adhoc
 
       # Ship .zip archives, not bare files: macOS binaries have no extension and lose
       # their executable bit over a raw download — zipping keeps +x and makes the asset clear.

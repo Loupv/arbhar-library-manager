@@ -1019,6 +1019,11 @@ reservePanel.addEventListener('dragleave', (e) => {
 });
 reservePanel.addEventListener('drop', async (e) => {
   reservePanel.classList.remove('drop-active');
+  if (!reserveHandle) {                       // nowhere to put them yet
+    e.preventDefault();
+    toast('Choose a reserve folder first (button at the bottom of the Reserve panel).', true);
+    return;
+  }
   const fileData = e.dataTransfer.getData('application/x-arbhar-file');
   if (fileData) {
     e.preventDefault();

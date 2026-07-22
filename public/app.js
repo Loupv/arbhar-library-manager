@@ -655,7 +655,7 @@ function wireFolderDrop(el, folderRel, hl) {
       e.preventDefault(); e.stopPropagation();
       const item = JSON.parse(stg);
       if (item.path === folderRel) return;
-      try { await api.post('/api/staging/move', { from: item.path, to: folderRel }); state.expanded.add(folderRel); toast('Moved.'); loadStaging(); }
+      try { const r = await api.post('/api/staging/move', { from: item.path, to: folderRel }); state.expanded.add(folderRel); if (r.moved) toast('Moved.'); loadStaging(); }
       catch (err) { toast(err.message, true); }
       return;
     }

@@ -638,13 +638,13 @@ async function apiStagingMove(res, body) {
   if (!fs.existsSync(src)) return fail(res, 400, 'Élément introuvable.');
   await ensureDir(destDir);
   // No-op if already there; refuse moving a folder into itself/its descendant.
-  if (path.dirname(src) === destDir) return sendJSON(res, 200, { ok: true });
+  if (path.dirname(src) === destDir) return sendJSON(res, 200, { ok: true, moved: false });
   if (fs.statSync(src).isDirectory() && isInside(src, destDir)) {
     return fail(res, 400, 'Impossible de déplacer un dossier dans lui-même.');
   }
   const dest = await uniquePath(destDir, path.basename(src));
   await fsp.rename(src, dest);
-  sendJSON(res, 200, { ok: true });
+  sendJSON(res, 200, { ok: true, moved: true });
 }
 
 // ---------------------------------------------------------------------------

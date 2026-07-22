@@ -1211,6 +1211,7 @@ async function setEditor(rel, name, scope = 'root') {
     editor.buf = await audioCtx().decodeAudioData(await file.arrayBuffer());
   } catch (e) { editor.buf = null; toast('Audio decoding failed.', true); }
   drawWave();
+  if (editor.buf && !playheadRAF && audio && !audio.paused) playheadRAF = requestAnimationFrame(tickPlayhead);
 }
 function clearEditor() {
   editor.rel = null; editor.buf = null;
@@ -1288,8 +1289,7 @@ function drawWave() {
 let playheadRAF = 0;
 function tickPlayhead() {
   playheadRAF = 0;
-  if (!editor.buf) return;
-  drawWave();
+  if (editor.buf) drawWave();                 // draw only when ready — but keep looping regardless
   if (!audio.paused && !audio.ended) playheadRAF = requestAnimationFrame(tickPlayhead);
 }
 audio.addEventListener('play', () => { if (!playheadRAF) playheadRAF = requestAnimationFrame(tickPlayhead); });

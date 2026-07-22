@@ -547,12 +547,15 @@ function renderSceneView() {
 }
 
 function selectLayer(layer, { play = true } = {}) {
+  const cur = cellAt(state.sceneBank, state.sceneCell) || { files: [] };
+  const f = layerFile(cur, layer);
+  const relCur = f ? slotRel(state.sceneBank, state.sceneCell) + '/' + f.name : null;
+  // Re-clicking the layer tile that is already playing pauses it (and vice-versa).
+  if (play && relCur && toggledCurrent('/api/audio?path=' + encodeURIComponent(relCur))) return;
   state.sceneLayer = layer;
   renderSceneView();
   const sel = $('#scene-grid .layer-tile.selected');
   if (sel) sel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  const cur = cellAt(state.sceneBank, state.sceneCell) || { files: [] };
-  const f = layerFile(cur, layer);
   if (f) {
     const rel = slotRel(state.sceneBank, state.sceneCell) + '/' + f.name;
     if (play) playAudio('/api/audio?path=' + encodeURIComponent(rel), `${state.sceneBank}.${state.sceneCell} · L${layer} · ${prettyName(f.name)}`, sel);
@@ -636,12 +639,15 @@ async function clearSlotWithUndo(bank, cell) {
 
 // Select a slot (shared by click + keyboard) and audition its first sample.
 function selectSlot(bank, cell, { play = true } = {}) {
+  const cc = cellAt(bank, cell);
+  const relFirst = cc && cc.files.length ? slotRel(bank, cell) + '/' + cc.files[0].name : null;
+  // Re-clicking the tile that is already playing pauses it (and vice-versa).
+  if (play && relFirst && toggledCurrent('/api/audio?path=' + encodeURIComponent(relFirst))) return;
   state.selected = { bank, cell };
   renderGrid();
   renderInspector();
   const sel = $('#grid .pad.selected');
   if (sel) sel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  const cc = cellAt(bank, cell);
   if (cc && cc.files.length) {
     const first = cc.files[0];
     const rel = slotRel(bank, cell) + '/' + first.name;
@@ -812,6 +818,8 @@ async function renderNode(pathRel, depth, container) {
         <button class="mini x" title="Remove">✕</button>`;
       li.onclick = (e) => {
         if (e.target.closest('.mini')) return;
+        // Re-clicking the reserve item that is already playing pauses it (and vice-versa).
+        if (toggledCurrent('/api/staging-audio?path=' + encodeURIComponent(rel))) return;
         playAudio('/api/staging-audio?path=' + encodeURIComponent(rel), name, li);
         playingStagingPath = rel;                 // remember it's a reserve sample
         setEditor(rel, name, 'reserve');          // open the editor on this reserve sample
@@ -1111,6 +1119,17 @@ const audio = $('#audio');
 let currentRow = null;
 let playingStagingPath = null;   // reserve path of the playing sample, if it came from the reserve
 let lastAudioURL = null;         // object URL to revoke
+let currentSrcKey = null;        // logical src of the loaded sample (stable across re-renders)
+
+// Re-clicking the tile that is already loaded toggles play/pause instead of restarting.
+function toggledCurrent(srcKey) {
+  if (!audio.src || currentSrcKey !== srcKey) return false;
+  if (audio.paused || audio.ended) {
+    if (audio.ended) audio.currentTime = 0;
+    audio.play().catch(() => {}); $('#pl-toggle').textContent = '❚❚';
+  } else { audio.pause(); $('#pl-toggle').textContent = '▶'; }
+  return true;
+}
 
 // Turn the old server audio URLs into blob URLs from the chosen folders.
 async function resolveAudioURL(src) {
@@ -1124,6 +1143,7 @@ async function resolveAudioURL(src) {
 async function playAudio(src, name, row) {
   if (currentRow) currentRow.classList.remove('playing');
   currentRow = row; if (row) row.classList.add('playing');
+  currentSrcKey = src;
   playingStagingPath = null;     // reset; the reserve caller sets it right after (sync, before await)
   $('#pl-name').textContent = name;
   $('#pl-toggle').disabled = false;
@@ -1142,6 +1162,7 @@ function stopPlayback() {
   if (lastAudioURL) { URL.revokeObjectURL(lastAudioURL); lastAudioURL = null; }
   if (currentRow) currentRow.classList.remove('playing');
   currentRow = null;
+  currentSrcKey = null;
   playingStagingPath = null;
   $('#pl-toggle').textContent = '▶';
   $('#pl-toggle').disabled = true;

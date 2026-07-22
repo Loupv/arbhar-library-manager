@@ -975,17 +975,25 @@ function drawWave() {
   const sx = editor.sel.start * W, ex = editor.sel.end * W;
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.fillRect(0, 0, sx, H); ctx.fillRect(ex, 0, W - ex, H);
-  ctx.strokeStyle = '#e2c489'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.moveTo(ex, 0); ctx.lineTo(ex, H); ctx.stroke();
-  ctx.lineWidth = 1;
   const selW = ex - sx, dur = selDuration();
   const fi = dur > 0 ? Math.min(1, (editor.fadeIn / 1000) / dur) : 0;
   const fo = dur > 0 ? Math.min(1, (editor.fadeOut / 1000) / dur) : 0;
-  ctx.strokeStyle = 'rgba(226,196,137,0.75)';
+  ctx.strokeStyle = 'rgba(226,196,137,0.7)';
   ctx.beginPath();
   ctx.moveTo(sx, H); ctx.lineTo(sx + selW * fi, 0);
   ctx.moveTo(ex, H); ctx.lineTo(ex - selW * fo, 0);
   ctx.stroke();
+  // discrete trim handles: a faint boundary line + a small grab pill at mid-height
+  for (const bx of [sx, ex]) {
+    ctx.strokeStyle = 'rgba(226,196,137,0.35)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(bx, 0); ctx.lineTo(bx, H); ctx.stroke();
+    const hw = 7, hh = 26;
+    ctx.fillStyle = '#e2c489';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(bx - hw / 2, mid - hh / 2, hw, hh, 3.5);
+    else ctx.rect(bx - hw / 2, mid - hh / 2, hw, hh);
+    ctx.fill();
+  }
   $('#edit-info').innerHTML = `durée <b>${fmtDur(editor.buf.duration)}</b> · sélection <b>${fmtDur(dur)}</b> · ${editor.buf.sampleRate / 1000}k · ${editor.buf.numberOfChannels === 2 ? 'stéréo' : 'mono'}`;
 }
 
@@ -1057,7 +1065,14 @@ async function applyEdit() {
     if (!r.ok) throw new Error((await r.json()).error);
     const data = await r.json();
     await loadGrid();
-    await setEditor(rel, name);
+    // Reflect the result immediately from the processed buffer.
+    const nb = audioCtx().createBuffer(chans.length, chans[0].length, sampleRate);
+    chans.forEach((c, i) => nb.copyToChannel(c, i));
+    editor.buf = nb;
+    editor.sel = { start: 0, end: 1 }; editor.fadeIn = 0; editor.fadeOut = 0; editor.normalize = false;
+    $('#fade-in').value = 0; $('#fade-out').value = 0; $('#fade-in-val').textContent = '0 ms'; $('#fade-out-val').textContent = '0 ms';
+    $('#normalize').checked = false; $('#norm-db').value = editor.normDb;
+    drawWave();
     toast('Sample edited ✓', false, async () => {
       await api.post('/api/restore', { items: [data.restore] });
       await loadGrid(); await setEditor(rel, name); toast('Edit reverted.');

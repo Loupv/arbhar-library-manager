@@ -811,6 +811,7 @@ async function renderNode(pathRel, depth, container) {
         if (e.target.closest('.mini')) return;
         playAudio('/api/staging-audio?path=' + encodeURIComponent(rel), name, li);
         playingStagingPath = rel;                 // remember it's a reserve sample
+        setEditor(rel, name, 'reserve');          // open the editor on this reserve sample
       };
       li.querySelector('.x').onclick = (e) => { e.stopPropagation(); delStaged(rel, false, name); };
       li.addEventListener('dragstart', (e) => {
@@ -1193,8 +1194,8 @@ function audioCtx() {
 }
 function fmtDur(s) { return (s || 0).toFixed(2) + ' s'; }
 
-async function setEditor(rel, name) {
-  editor.rel = rel; editor.name = name;
+async function setEditor(rel, name, scope = 'root') {
+  editor.rel = rel; editor.name = name; editor.scope = scope;
   editor.sel = { start: 0, end: 1 }; editor.fadeIn = 0; editor.fadeOut = 0; editor.normalize = false;
   $('#fade-in').value = 0; $('#fade-out').value = 0;
   $('#fade-in-val').textContent = '0 ms'; $('#fade-out-val').textContent = '0 ms';
@@ -1203,8 +1204,8 @@ async function setEditor(rel, name) {
   $('#insp-empty').classList.add('hidden');
   $('#insp-sub').textContent = prettyName(name);
   try {
-    const arr = await (await fileByRootRel(rel)).arrayBuffer();
-    editor.buf = await audioCtx().decodeAudioData(arr);
+    const file = scope === 'reserve' ? await fileByReservePath(rel) : await fileByRootRel(rel);
+    editor.buf = await audioCtx().decodeAudioData(await file.arrayBuffer());
   } catch (e) { editor.buf = null; toast('Audio decoding failed.', true); }
   drawWave();
 }
@@ -1314,15 +1315,17 @@ function previewEdit() {
 async function applyEdit() {
   if (!editor.buf || !editor.rel) return;
   const { chans, sampleRate } = processEdited();
-  const rel = editor.rel, name = editor.name;
+  const rel = editor.rel, name = editor.name, scope = editor.scope || 'root';
+  const refresh = () => (scope === 'reserve' ? loadStaging() : loadGrid());
   try {
-    const before = await (await fileByRootRel(rel)).arrayBuffer();   // keep original for undo
-    await writeBytes('root', rel, encodeWav24(chans, sampleRate));
-    await loadGrid();
-    await setEditor(rel, name);
+    const src = scope === 'reserve' ? await fileByReservePath(rel) : await fileByRootRel(rel);
+    const before = await src.arrayBuffer();                           // keep original for undo
+    await writeBytes(scope, rel, encodeWav24(chans, sampleRate));
+    await refresh();
+    await setEditor(rel, name, scope);
     toast('Sample edited ✓', false, async () => {
-      await writeBytes('root', rel, before);
-      await loadGrid(); await setEditor(rel, name); toast('Edit reverted.');
+      await writeBytes(scope, rel, before);
+      await refresh(); await setEditor(rel, name, scope); toast('Edit reverted.');
     });
   } catch (e) { toast(e.message, true); }
 }

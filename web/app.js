@@ -236,6 +236,40 @@ async function apiMove(b) {
   return { ok: true, moved: true };
 }
 
+// Read every audio file of a slot folder as {name, bytes}.
+async function readSlotAudio(dir) {
+  const out = [];
+  for (const f of await listAudio(dir)) {
+    out.push({ name: f.name, bytes: await (await dir.getFileHandle(f.name)).getFile().then((x) => x.arrayBuffer()) });
+  }
+  return out;
+}
+// Swap the audio content of two library slots (all files, names kept — indices are slot-local).
+async function apiSwapSlots(b) {
+  const dirA = await dirByPath(rootHandle, slotRelPath(b.kind, b.lib, b.a.bank, b.a.cell), true);
+  const dirB = await dirByPath(rootHandle, slotRelPath(b.kind, b.lib, b.b.bank, b.b.cell), true);
+  const filesA = await readSlotAudio(dirA), filesB = await readSlotAudio(dirB);
+  for (const f of filesA) await dirA.removeEntry(f.name);
+  for (const f of filesB) await dirB.removeEntry(f.name);
+  for (const f of filesB) { const h = await dirA.getFileHandle(f.name, { create: true }); const w = await h.createWritable(); await w.write(f.bytes); await w.close(); }
+  for (const f of filesA) { const h = await dirB.getFileHandle(f.name, { create: true }); const w = await h.createWritable(); await w.write(f.bytes); await w.close(); }
+  return { ok: true };
+}
+// Swap two layers within one scene folder (re-index the numeric prefix; preset.txt untouched).
+async function apiSwapLayers(b) {
+  const dir = await dirByPath(rootHandle, slotRelPath('scene', 1, b.bank, b.cell), true);
+  const files = await listAudio(dir);
+  const pick = (n) => files.find((f) => new RegExp(`^${n}_`).test(f.name)) || null;
+  const read = async (f) => (f ? { name: f.name, bytes: await (await dir.getFileHandle(f.name)).getFile().then((x) => x.arrayBuffer()) } : null);
+  const A = await read(pick(b.a)), B = await read(pick(b.b));
+  const reindex = (name, n) => name.replace(/^\d+_/, `${n}_`);
+  if (A) await dir.removeEntry(A.name);
+  if (B) await dir.removeEntry(B.name);
+  if (A) { const nm = reindex(A.name, b.b); const h = await dir.getFileHandle(nm, { create: true }); const w = await h.createWritable(); await w.write(A.bytes); await w.close(); }
+  if (B) { const nm = reindex(B.name, b.a); const h = await dir.getFileHandle(nm, { create: true }); const w = await h.createWritable(); await w.write(B.bytes); await w.close(); }
+  return { ok: true };
+}
+
 const api = {
   async get(url) {
     const [path, qs] = url.split('?');
@@ -251,6 +285,7 @@ const api = {
       '/api/fill-scene': apiFillScene, '/api/rename': apiRename, '/api/delete': apiDelete,
       '/api/clear-slot': apiClearSlot, '/api/restore': apiRestore,
       '/api/staging/mkdir': apiMkdir, '/api/staging/move': apiMove,
+      '/api/swap-slots': apiSwapSlots, '/api/swap-layers': apiSwapLayers,
     };
     if (map[path]) return map[path](body);
     throw new Error('Unknown POST ' + path);
@@ -469,12 +504,13 @@ function renderGrid() {
         pad.draggable = true;
         pad.addEventListener('dragstart', (e) => {
           const rel = slotRel(bank, cell) + '/' + c.files[0].name;
-          e.dataTransfer.setData('application/x-arbhar-file', JSON.stringify({ path: rel, name: c.files[0].name }));
-          e.dataTransfer.effectAllowed = 'copy';
+          e.dataTransfer.setData('application/x-arbhar-file', JSON.stringify({ path: rel, name: c.files[0].name, swap: { kind: state.kind, lib: state.lib, bank, cell } }));
+          e.dataTransfer.effectAllowed = 'copyMove';
         });
       }
       wireExternalDrop(pad, { bank, cell });
       wireStagingDrop(pad, { bank, cell });
+      wireSwapDrop(pad, { bank, cell });
       grid.appendChild(pad);
     }
   }
@@ -541,8 +577,8 @@ function renderSceneView() {
       tile.draggable = true;
       tile.addEventListener('dragstart', (e) => {
         const rel = slotRel(state.sceneBank, state.sceneCell) + '/' + f.name;
-        e.dataTransfer.setData('application/x-arbhar-file', JSON.stringify({ path: rel, name: f.name }));
-        e.dataTransfer.effectAllowed = 'copy';
+        e.dataTransfer.setData('application/x-arbhar-file', JSON.stringify({ path: rel, name: f.name, swapLayer: { bank: state.sceneBank, cell: state.sceneCell, layer: L } }));
+        e.dataTransfer.effectAllowed = 'copyMove';
       });
     }
     wireLayerDrop(tile, L);
@@ -702,13 +738,24 @@ function selectLayer(layer, { play = true } = {}) {
 // Drop an external file or a staged sample onto a scene layer (replaces it).
 function wireLayerDrop(el, layer) {
   el.addEventListener('dragover', (e) => {
-    if (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes('application/x-arbhar-staging')) {
+    const t = e.dataTransfer.types;
+    if (t.includes('Files') || t.includes('application/x-arbhar-staging') || t.includes('application/x-arbhar-file')) {
       e.preventDefault(); el.classList.add('over');
     }
   });
   el.addEventListener('dragleave', () => el.classList.remove('over'));
   el.addEventListener('drop', async (e) => {
     el.classList.remove('over');
+    // Another layer tile dropped here → swap the two layers.
+    const fileData = e.dataTransfer.getData('application/x-arbhar-file');
+    if (fileData) {
+      let item; try { item = JSON.parse(fileData); } catch { item = null; }
+      if (item && item.swapLayer && item.swapLayer.bank === state.sceneBank && item.swapLayer.cell === state.sceneCell) {
+        e.preventDefault(); e.stopPropagation();
+        if (item.swapLayer.layer !== layer) await swapLayers(item.swapLayer.layer, layer);
+        return;
+      }
+    }
     const stg = e.dataTransfer.getData('application/x-arbhar-staging');
     if (stg) {
       e.preventDefault(); e.stopPropagation();
@@ -727,6 +774,20 @@ function wireLayerDrop(el, layer) {
       if (n) { toast(`Layer ${layer} imported.`); await loadGrid(); }
     }
   });
+}
+
+async function swapLayers(a, b) {
+  const bank = state.sceneBank, cell = state.sceneCell;
+  const body = { bank, cell, a, b };
+  try {
+    await api.post('/api/swap-layers', body);
+    await loadGrid();
+    selectLayer(b, { play: false });
+    toast(`Swapped layer ${a} ↔ ${b}`, false, async () => {
+      try { await api.post('/api/swap-layers', body); await loadGrid(); selectLayer(a, { play: false }); toast('Swap undone.'); }
+      catch (e) { toast(e.message, true); }
+    });
+  } catch (e) { toast(e.message, true); }
 }
 
 // Fill the current scene's 6 layers from a reserve folder's first 6 audio files.
@@ -1150,6 +1211,39 @@ function wireStagingDrop(el, slot) {
       selectSlot(slot.bank, slot.cell, { play: false });
     } catch (err) { toast(err.message, true); }
   });
+}
+
+// Drag one library pad onto another → swap their contents.
+function wireSwapDrop(el, slot) {
+  el.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer.types.includes('application/x-arbhar-file')) return;
+    e.preventDefault(); el.classList.add('over');
+  });
+  el.addEventListener('dragleave', () => el.classList.remove('over'));
+  el.addEventListener('drop', async (e) => {
+    const data = e.dataTransfer.getData('application/x-arbhar-file');
+    if (!data) return;
+    let item; try { item = JSON.parse(data); } catch { return; }
+    if (!item.swap) return;                                          // not a grid-internal drag
+    e.preventDefault(); e.stopPropagation(); el.classList.remove('over');
+    const s = item.swap;
+    if (s.kind !== state.kind || s.lib !== state.lib) return;        // different library grid
+    if (s.bank === slot.bank && s.cell === slot.cell) return;        // dropped on itself
+    await swapSlots(s, slot);
+  });
+}
+
+async function swapSlots(a, b) {
+  const body = { kind: a.kind, lib: a.lib, a: { bank: a.bank, cell: a.cell }, b: { bank: b.bank, cell: b.cell } };
+  try {
+    await api.post('/api/swap-slots', body);
+    await loadGrid();
+    selectSlot(b.bank, b.cell, { play: false });
+    toast(`Swapped ${a.bank}.${a.cell} ↔ ${b.bank}.${b.cell}`, false, async () => {
+      try { await api.post('/api/swap-slots', body); await loadGrid(); selectSlot(a.bank, a.cell, { play: false }); toast('Swap undone.'); }
+      catch (e) { toast(e.message, true); }
+    });
+  } catch (e) { toast(e.message, true); }
 }
 
 // The WHOLE reserve panel is a drop target for the root level. Drops that land on a

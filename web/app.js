@@ -230,10 +230,10 @@ async function apiMove(b) {
   const srcParent = await dirByPath(reserveHandle, srcParentPath, false);
   const src = await srcParent.getDirectoryHandle(srcName).catch(() => srcParent.getFileHandle(srcName));
   const destDir = await dirByPath(reserveHandle, b.to || '', true);
-  if (srcParentPath === (b.to || '')) return { ok: true };
+  if (srcParentPath === (b.to || '')) return { ok: true, moved: false };   // already there
   await copyInto(src, destDir, await uniqueName(destDir, srcName));
   await srcParent.removeEntry(srcName, { recursive: true });
-  return { ok: true };
+  return { ok: true, moved: true };
 }
 
 const api = {
@@ -889,7 +889,7 @@ function wireFolderDrop(el, folderRel, hl) {
       e.preventDefault(); e.stopPropagation();
       const item = JSON.parse(stg);
       if (item.path === folderRel) return;
-      try { await api.post('/api/staging/move', { from: item.path, to: folderRel }); state.expanded.add(folderRel); toast('Moved.'); loadStaging(); }
+      try { const r = await api.post('/api/staging/move', { from: item.path, to: folderRel }); state.expanded.add(folderRel); if (r.moved) toast('Moved.'); loadStaging(); }
       catch (err) { toast(err.message, true); }
       return;
     }

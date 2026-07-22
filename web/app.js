@@ -747,6 +747,8 @@ async function deleteFile(f, bank, cell) {
 
 /* ===================== RESERVE (accordion tree) ===================== */
 async function loadStaging() {
+  const scroller = $('#staging-drop');          // keep the scroll position across rebuilds
+  const prevScroll = scroller ? scroller.scrollTop : 0;
   const ul = $('#staging-list');
   ul.innerHTML = '';
   $('#stg-path').textContent = reserveHandle ? reserveHandle.name : 'no folder';
@@ -760,6 +762,7 @@ async function loadStaging() {
   hint.innerHTML = RESERVE_HINT_DEFAULT;
   const total = await renderNode('', 0, ul);
   $('#staging-panel').classList.toggle('has-items', total > 0);
+  if (scroller) scroller.scrollTop = prevScroll;
 }
 
 // Render a folder level. Children are NESTED inside their folder's <li> so the folder's

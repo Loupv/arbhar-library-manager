@@ -296,7 +296,7 @@ html, body {
 .editor { margin-bottom: 16px; }
 .wave {
   width: 100%; height: 130px; display: block; border-radius: var(--radius);
-  background: var(--bg); border: 1px solid var(--line-soft); cursor: ew-resize; touch-action: none;
+  background: var(--bg); border: 1px solid var(--line-soft); cursor: pointer; touch-action: none;
 }
 .edit-info { font-size: 11px; color: var(--muted); margin: 8px 2px; font-variant-numeric: tabular-nums; }
 .edit-info b { color: var(--gold-br); font-weight: 500; }

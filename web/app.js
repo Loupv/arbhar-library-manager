@@ -1195,7 +1195,7 @@ function audioCtx() {
 function fmtDur(s) { return (s || 0).toFixed(2) + ' s'; }
 
 async function setEditor(rel, name, scope = 'root') {
-  editor.rel = rel; editor.name = name; editor.scope = scope;
+  editor.rel = rel; editor.name = name; editor.scope = scope; editor.peaks = null;
   editor.sel = { start: 0, end: 1 }; editor.fadeIn = 0; editor.fadeOut = 0; editor.normalize = false;
   $('#fade-in').value = 0; $('#fade-out').value = 0;
   $('#fade-in-val').textContent = '0 ms'; $('#fade-out-val').textContent = '0 ms';
@@ -1216,6 +1216,21 @@ function clearEditor() {
 }
 function selDuration() { return editor.buf ? (editor.sel.end - editor.sel.start) * editor.buf.duration : 0; }
 
+// Precompute min/max per pixel column once per (buffer, width) — cheap redraws after.
+function computePeaks(W) {
+  const ch = editor.buf.getChannelData(0), n = ch.length, peaks = new Array(W);
+  for (let x = 0; x < W; x++) {
+    const s0 = Math.floor(x / W * n), s1 = Math.max(s0 + 1, Math.floor((x + 1) / W * n));
+    let mn = 1, mx = -1;
+    for (let i = s0; i < s1; i++) { const v = ch[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+    peaks[x] = [mn, mx];
+  }
+  editor.peaks = peaks; editor.peaksW = W;
+}
+// True when the footer player is playing this editor's file (same duration).
+function editorIsPlaying() {
+  return editor.buf && audio.duration && Math.abs(audio.duration - editor.buf.duration) < 0.35;
+}
 function drawWave() {
   const canvas = $('#wave');
   const dpr = window.devicePixelRatio || 1;
@@ -1225,14 +1240,12 @@ function drawWave() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
   if (!editor.buf) return;
-  const ch = editor.buf.getChannelData(0), n = ch.length, mid = H / 2;
-  const g = normGain();                          // reflect normalization live
+  if (!editor.peaks || editor.peaksW !== W) computePeaks(W);
+  const mid = H / 2, g = normGain();
   ctx.strokeStyle = 'rgba(201,161,91,0.85)';
   ctx.beginPath();
   for (let x = 0; x < W; x++) {
-    const s0 = Math.floor(x / W * n), s1 = Math.max(s0 + 1, Math.floor((x + 1) / W * n));
-    let mn = 1, mx = -1;
-    for (let i = s0; i < s1; i++) { const v = ch[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+    let mn = editor.peaks[x][0], mx = editor.peaks[x][1];
     mx = Math.max(-1, Math.min(1, mx * g)); mn = Math.max(-1, Math.min(1, mn * g));
     ctx.moveTo(x + 0.5, mid - mx * mid * 0.9);
     ctx.lineTo(x + 0.5, mid - mn * mid * 0.9);
@@ -1252,7 +1265,44 @@ function drawWave() {
   ctx.moveTo(sx, H); ctx.lineTo(sx + selW * fi, 0);
   ctx.moveTo(ex, H); ctx.lineTo(ex - selW * fo, 0);
   ctx.stroke();
+  if (editorIsPlaying()) {                       // scrolling playhead
+    const px = (audio.currentTime / audio.duration) * W;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke(); ctx.lineWidth = 1;
+  }
   $('#edit-info').innerHTML = `durée <b>${fmtDur(editor.buf.duration)}</b> · sélection <b>${fmtDur(dur)}</b> · ${editor.buf.sampleRate / 1000}k · ${editor.buf.numberOfChannels === 2 ? 'stéréo' : 'mono'}`;
+}
+
+// Animate the playhead while the editor's file plays.
+let playheadRAF = 0;
+function tickPlayhead() {
+  playheadRAF = 0;
+  if (!editor.buf) return;
+  drawWave();
+  if (!audio.paused && !audio.ended) playheadRAF = requestAnimationFrame(tickPlayhead);
+}
+audio.addEventListener('play', () => { if (!playheadRAF) playheadRAF = requestAnimationFrame(tickPlayhead); });
+['pause', 'ended', 'seeked'].forEach((ev) => audio.addEventListener(ev, () => { if (editor.buf) drawWave(); }));
+
+// Click the waveform (away from the trim handles) to play from that point.
+function editorSrc() {
+  return editor.scope === 'reserve'
+    ? '/api/staging-audio?path=' + encodeURIComponent(editor.rel)
+    : '/api/audio?path=' + encodeURIComponent(editor.rel);
+}
+async function seekEditor(f) {
+  if (!editor.buf) return;
+  const t = f * editor.buf.duration;
+  if (editorIsPlaying()) {
+    audio.currentTime = t; audio.play().catch(() => {});
+  } else {
+    await playAudio(editorSrc(), prettyName(editor.name), null);
+    if (editor.scope === 'reserve') playingStagingPath = editor.rel;
+    const seek = () => { try { audio.currentTime = t; } catch (e) { /* */ } };
+    if (audio.readyState >= 1 && audio.duration) seek();
+    else audio.addEventListener('loadedmetadata', seek, { once: true });
+  }
+  if (!playheadRAF) playheadRAF = requestAnimationFrame(tickPlayhead);
 }
 
 // process trim + fades → per-channel Float32 arrays
@@ -1341,9 +1391,14 @@ async function applyEdit() {
   };
   canvas.addEventListener('pointerdown', (e) => {
     if (!editor.buf) return;
-    const f = frac(e);
-    editor.drag = Math.abs(f - editor.sel.start) <= Math.abs(f - editor.sel.end) ? 'start' : 'end';
-    canvas.setPointerCapture(e.pointerId); move(f);
+    const W = canvas.clientWidth || 280, f = frac(e);
+    const dStart = Math.abs(f - editor.sel.start) * W, dEnd = Math.abs(f - editor.sel.end) * W;
+    if (dStart <= 8 || dEnd <= 8) {            // near an edge → drag the trim handle
+      editor.drag = dStart <= dEnd ? 'start' : 'end';
+      canvas.setPointerCapture(e.pointerId); move(f);
+    } else {                                    // elsewhere → play from that point
+      seekEditor(f);
+    }
   });
   canvas.addEventListener('pointermove', (e) => { if (editor.drag) move(frac(e)); });
   canvas.addEventListener('pointerup', () => { editor.drag = null; });

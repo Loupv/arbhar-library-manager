@@ -363,7 +363,40 @@ input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 4
 .badge { display: inline-block; padding: 1px 6px; border-radius: 4px; background: var(--panel-2);
   border: 1px solid var(--line-soft); color: var(--gold-dim); font-size: 9px; margin-right: 4px; }
 .badge.ok { color: var(--ok); border-color: rgba(139,168,106,.4); }
-.preset-note { font-size: 11px; color: var(--gold-dim); margin: 8px 0 0; }
+/* ---- scene sub-tabs + preset editor ---- */
+.scene-subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line-soft); margin-bottom: -6px; }
+.scene-subtab {
+  background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
+  color: var(--muted); font: inherit; font-size: 13px; padding: 6px 12px 8px; transition: all .13s ease;
+}
+.scene-subtab:hover { color: var(--text); }
+.scene-subtab.active { color: var(--gold-br); border-bottom-color: var(--gold); }
+.scene-subtab.has-preset::after { content: "◆"; color: var(--gold-dim); margin-left: 6px; font-size: 9px; vertical-align: middle; }
+
+.preset-panel { max-width: 760px; }
+.preset-loading { color: var(--muted); font-size: 13px; }
+.preset-head { margin-bottom: 14px; }
+.preset-status { font-size: 12px; color: var(--muted); }
+.preset-status.good { color: var(--gold-dim); }
+.preset-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 22px; }
+.preset-group {
+  grid-column: 1 / -1; color: var(--gold-dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  margin-top: 10px; padding-bottom: 4px; border-bottom: 1px solid var(--line-soft);
+}
+.preset-group:first-child { margin-top: 0; }
+.preset-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pf-label { color: var(--muted); font-size: 12px; }
+.pf-control { display: flex; align-items: center; gap: 6px; }
+.pf-unit { color: var(--gold-dim); font-size: 11px; }
+.pf-input {
+  min-width: 140px; background: var(--bg); border: 1px solid var(--line-soft); border-radius: 7px;
+  color: var(--text); font: inherit; font-size: 13px; padding: 5px 8px;
+}
+.pf-input:focus { outline: none; border-color: var(--gold-dim); }
+select.pf-input { cursor: pointer; }
+input.pf-input[type=number] { min-width: 100px; }
+.preset-actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 18px; }
+.preset-hint { color: var(--muted); font-size: 11px; flex: 1; }
 
 .name-edit { display: flex; gap: 6px; margin-top: 8px; }
 .name-edit input { flex: 1; background: var(--bg); border: 1px solid var(--line-soft); color: var(--text);

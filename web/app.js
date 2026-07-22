@@ -275,6 +275,7 @@ const state = {
   sceneBank: 1,      // scenes: selected bank 1..6
   sceneCell: 1,      // scenes: selected scene 1..6
   sceneLayer: 1,     // scenes: selected layer tile 1..6
+  sceneTab: 'layers', // scenes sub-view: 'layers' | 'preset'
   expanded: new Set(), // expanded folder paths in the reserve tree
 };
 
@@ -509,12 +510,15 @@ function renderSceneView() {
   controls.innerHTML = '';
   controls.appendChild(selRow('Bank', state.sceneBank, (v) => { stopPlayback(); clearEditor(); state.sceneBank = v; state.sceneLayer = 1; renderSceneView(); }, bankFilled));
   controls.appendChild(selRow('Scene', state.sceneCell, (v) => { stopPlayback(); clearEditor(); state.sceneCell = v; state.sceneLayer = 1; renderSceneView(); }, sceneFilled));
-  if (cur.hasPreset) {
-    const p = document.createElement('div');
-    p.className = 'preset-note';
-    p.textContent = '⬥ preset.txt present in this scene (preserved)';
-    controls.appendChild(p);
-  }
+
+  // Layers | Preset sub-tabs (both share the Bank+Scene selection above).
+  const onPreset = state.sceneTab === 'preset';
+  $('#sst-layers').classList.toggle('active', !onPreset);
+  $('#sst-preset').classList.toggle('active', onPreset);
+  $('#sst-preset').classList.toggle('has-preset', !!cur.hasPreset);
+  $('#scene-grid').classList.toggle('hidden', onPreset);
+  $('#preset-panel').classList.toggle('hidden', !onPreset);
+  if (onPreset) { renderPreset(); return; }
 
   const grid = $('#scene-grid');
   grid.innerHTML = '';
@@ -545,6 +549,135 @@ function renderSceneView() {
     grid.appendChild(tile);
   }
 }
+
+/* ===================== SCENE PRESET EDITOR (preset.txt) ===================== */
+// A curated selection of the arbhar V2 preset parameters. Only these lines are
+// patched in preset.txt; every other parameter and all documentation are kept as-is.
+const PRESET_FIELDS = [
+  { group: 'Identity' },
+  { key: 'PRESET_NAME', label: 'Preset name', type: 'text', ph: '(optional)' },
+  { group: 'Loading' },
+  { key: 'LoadConfiguration', label: 'Load configuration', type: 'select', opts: [['0', 'Load nothing'], ['1', 'Load preset'], ['2', 'Load layers'], ['3', 'Load scene (preset + layers)']] },
+  { group: 'Input & routing' },
+  { key: 'InputMode', label: 'Input mode', type: 'select', opts: [['0', 'Mono'], ['1', 'Stereo']] },
+  { key: 'PhaseSwitch', label: 'Phase', type: 'select', opts: [['0', 'Phase-inverted'], ['1', 'Phase-corrected']] },
+  { key: 'ModCV', label: 'Mod CV target', type: 'select', opts: [['0', 'None'], ['1', 'Panning'], ['2', 'Hold'], ['3', 'Reverb'], ['4', 'Delay']] },
+  { group: 'Capture' },
+  { key: 'CaptureCVMode', label: 'Capture CV mode', type: 'select', opts: [['0', 'Latching'], ['1', 'Momentary'], ['2', 'Retrigger']] },
+  { key: 'AccumulativeCaptureMode', label: 'Accumulative capture', type: 'select', opts: [['0', 'Disable'], ['1', 'Enable']] },
+  { group: 'Grain engine' },
+  { key: 'OnsetMode', label: 'Onset mode', type: 'select', opts: [['1', 'alpha'], ['2', 'beta'], ['3', 'gamma'], ['4', 'delta'], ['5', 'epsilon'], ['6', 'zeta']] },
+  { key: 'WavetableCentreFrequency', label: 'Wavetable centre freq', type: 'number', step: '0.001', unit: 'Hz' },
+  { group: 'Follow / Scan' },
+  { key: 'FollowMode', label: 'Follow mode', type: 'select', opts: [['0', 'Scan'], ['1', 'Follow']] },
+  { key: 'FollowSpeedDirection', label: 'Follow speed direction', type: 'select', opts: [['0', 'Unidirectional'], ['1', 'Bidirectional'], ['2', 'Inverted unidirectional']] },
+  { key: 'FollowLoop', label: 'Follow loop', type: 'select', opts: [['0', 'Disable'], ['1', 'Enable']] },
+];
+
+// Read the current value of a preset key, or null if absent. Leading whitespace tolerated.
+function presetGet(text, key) {
+  const re = key === 'PRESET_NAME'
+    ? /^\s*PRESET_NAME:\s*"([^"]*)"/m
+    : new RegExp(`^\\s*PARAMETER:\\s*${key}\\s*:\\s*(.+?)\\s*$`, 'm');
+  const m = text.match(re);
+  return m ? m[1] : null;
+}
+// Replace a value in place, preserving the line's exact prefix (indent + label). No-op if absent.
+function presetSet(text, key, val) {
+  if (key === 'PRESET_NAME') {
+    return text.replace(/^(\s*PRESET_NAME:\s*).*$/m, (_, p1) => p1 + '"' + val + '"');
+  }
+  const re = new RegExp(`^(\\s*PARAMETER:\\s*${key}\\s*:\\s*).*$`, 'm');
+  return text.replace(re, (_, p1) => p1 + val);
+}
+
+function scenePresetRel(bank, cell) { return `_arbhar_scenes/${bank}_${cell}_scene/preset.txt`; }
+
+async function readPresetText(bank, cell) {
+  try { const f = await fileByRootRel(scenePresetRel(bank, cell)); return await f.text(); }
+  catch { return null; }
+}
+let presetTemplate = null;
+async function loadPresetTemplate() {
+  if (presetTemplate != null) return presetTemplate;
+  try { presetTemplate = await (await fetch('preset-template.txt')).text(); }
+  catch { presetTemplate = '#ARB\n{\n}\n'; }
+  return presetTemplate;
+}
+
+async function renderPreset() {
+  const panel = $('#preset-panel');
+  panel.innerHTML = '<p class="preset-loading">Loading preset…</p>';
+  const bank = state.sceneBank, cell = state.sceneCell;
+  let text = await readPresetText(bank, cell);
+  const exists = text != null;
+  if (!exists) text = await loadPresetTemplate();
+  // The user may have moved to another scene / sub-tab while we were reading.
+  if (state.sceneBank !== bank || state.sceneCell !== cell || state.sceneTab !== 'preset') return;
+
+  panel.innerHTML = '';
+  const head = document.createElement('div');
+  head.className = 'preset-head';
+  head.innerHTML = exists
+    ? '<span class="preset-status good">⬥ preset.txt present — edited in place, other parameters preserved</span>'
+    : '<span class="preset-status">no preset.txt yet — Create will write one from the arbhar template</span>';
+  panel.appendChild(head);
+
+  const form = document.createElement('div');
+  form.className = 'preset-form';
+  const inputs = {};
+  for (const f of PRESET_FIELDS) {
+    if (f.group) { const g = document.createElement('div'); g.className = 'preset-group'; g.textContent = f.group; form.appendChild(g); continue; }
+    const row = document.createElement('label'); row.className = 'preset-field';
+    const lab = document.createElement('span'); lab.className = 'pf-label'; lab.textContent = f.label; row.appendChild(lab);
+    const val = presetGet(text, f.key);
+    let el;
+    if (f.type === 'select') {
+      el = document.createElement('select');
+      for (const [v, l] of f.opts) { const o = document.createElement('option'); o.value = v; o.textContent = l; el.appendChild(o); }
+      if (val != null && !f.opts.some((o) => o[0] === val)) { const o = document.createElement('option'); o.value = val; o.textContent = val + ' (current)'; el.appendChild(o); }
+      el.value = val != null ? val : f.opts[0][0];
+    } else {
+      el = document.createElement('input'); el.type = f.type === 'number' ? 'number' : 'text';
+      if (f.step) el.step = f.step;
+      if (f.ph) el.placeholder = f.ph;
+      el.value = val != null ? val : '';
+    }
+    el.className = 'pf-input';
+    const wrap = document.createElement('span'); wrap.className = 'pf-control'; wrap.appendChild(el);
+    if (f.unit) { const u = document.createElement('span'); u.className = 'pf-unit'; u.textContent = f.unit; wrap.appendChild(u); }
+    row.appendChild(wrap);
+    form.appendChild(row);
+    inputs[f.key] = el;
+  }
+  panel.appendChild(form);
+
+  const actions = document.createElement('div'); actions.className = 'preset-actions';
+  const hint = document.createElement('span'); hint.className = 'preset-hint';
+  hint.textContent = 'Only the parameters above are changed; the rest of the file is left untouched.';
+  const save = document.createElement('button'); save.className = 'btn sm primary'; save.textContent = exists ? 'Save preset' : 'Create preset';
+  actions.appendChild(hint); actions.appendChild(save);
+  panel.appendChild(actions);
+
+  save.onclick = async () => {
+    let out = text;
+    for (const f of PRESET_FIELDS) {
+      if (f.group) continue;
+      const v = inputs[f.key].value.trim();
+      if (f.key === 'PRESET_NAME') out = presetSet(out, f.key, v.replace(/"/g, "'"));
+      else if (v !== '') out = presetSet(out, f.key, v);
+    }
+    try {
+      await writeBytes('root', scenePresetRel(bank, cell), new TextEncoder().encode(out));
+      await loadGrid();                 // refresh hasPreset dot + re-render the panel from disk
+      toast(exists ? 'Preset saved ✓' : 'Preset created ✓');
+    } catch (e) { toast(e.message, true); }
+  };
+}
+
+// Sub-tab switching (wired once; the buttons live in the static markup).
+$('#sst-layers').onclick = () => { if (state.sceneTab === 'layers') return; state.sceneTab = 'layers'; renderSceneView(); };
+$('#sst-preset').onclick = () => { if (state.sceneTab === 'preset') return; state.sceneTab = 'preset'; stopPlayback(); renderSceneView(); };
 
 function selectLayer(layer, { play = true } = {}) {
   const cur = cellAt(state.sceneBank, state.sceneCell) || { files: [] };
@@ -1106,8 +1239,9 @@ function moveSelection(key) {
 document.addEventListener('keydown', (e) => {
   if ($('#app').classList.contains('hidden')) return;        // still on the picker
   const t = e.target;
-  const typing = /^(input|textarea)$/i.test(t.tagName) || t.isContentEditable;
-  if (typing) return;                                         // don't hijack while editing a name
+  const typing = /^(input|textarea|select)$/i.test(t.tagName) || t.isContentEditable;
+  if (typing) return;                                         // don't hijack while editing a name / field
+  if (state.kind === 'scene' && state.sceneTab === 'preset') return;  // preset form is open
 
   if (e.key === 'Tab') { e.preventDefault(); cycleTab(e.shiftKey ? -1 : 1); }
   else if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePlay(); }

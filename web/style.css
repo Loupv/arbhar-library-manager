@@ -270,6 +270,7 @@ html, body {
 .sel-btn.active { background: var(--gold); color: #1a1409; border-color: var(--gold); font-weight: 600; }
 .sel-btn.filled::after { content: "•"; color: var(--gold); margin-left: 1px; font-size: 11px; vertical-align: super; }
 .sel-btn.active.filled::after { color: #1a1409; }
+.sel-btn.over { border-color: var(--gold-br); background: rgba(201,161,91,0.18); }
 
 .scene-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-width: 760px; border-radius: var(--radius); }
 .scene-grid.over { outline: 1.5px dashed var(--gold); outline-offset: 6px; }
@@ -364,7 +365,12 @@ input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 4
   border: 1px solid var(--line-soft); color: var(--gold-dim); font-size: 9px; margin-right: 4px; }
 .badge.ok { color: var(--ok); border-color: rgba(139,168,106,.4); }
 /* ---- scene sub-tabs + preset editor ---- */
-.scene-subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line-soft); margin-bottom: -6px; }
+.scene-subtabs { display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid var(--line-soft); margin-bottom: -6px; }
+.scene-clear {
+  margin-left: auto; align-self: center; background: none; border: 1px solid var(--line-soft); border-radius: 7px;
+  color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; padding: 4px 10px; transition: all .13s ease;
+}
+.scene-clear:hover { border-color: var(--danger); color: #f0c5bd; }
 .scene-subtab {
   background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
   color: var(--muted); font: inherit; font-size: 13px; padding: 6px 12px 8px; transition: all .13s ease;

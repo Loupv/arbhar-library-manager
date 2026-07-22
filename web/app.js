@@ -269,6 +269,31 @@ async function apiSwapLayers(b) {
   if (B) { const nm = reindex(B.name, b.a); const h = await dir.getFileHandle(nm, { create: true }); const w = await h.createWritable(); await w.write(B.bytes); await w.close(); }
   return { ok: true };
 }
+// Exchange all files (audio + preset.txt) between two folders.
+async function swapDirContents(pathA, pathB) {
+  const dirA = await dirByPath(rootHandle, pathA, true);
+  const dirB = await dirByPath(rootHandle, pathB, true);
+  const grab = async (dir) => {
+    const out = [];
+    for await (const [name, h] of dir.entries()) if (h.kind === 'file' && !name.startsWith('.')) out.push({ name, bytes: await (await h.getFile()).arrayBuffer() });
+    return out;
+  };
+  const A = await grab(dirA), B = await grab(dirB);
+  for (const f of A) await dirA.removeEntry(f.name);
+  for (const f of B) await dirB.removeEntry(f.name);
+  for (const f of B) { const h = await dirA.getFileHandle(f.name, { create: true }); const w = await h.createWritable(); await w.write(f.bytes); await w.close(); }
+  for (const f of A) { const h = await dirB.getFileHandle(f.name, { create: true }); const w = await h.createWritable(); await w.write(f.bytes); await w.close(); }
+}
+// Swap two scenes within a bank (whole folders).
+async function apiSwapScenes(b) {
+  await swapDirContents(`_arbhar_scenes/${b.bank}_${b.a}_scene`, `_arbhar_scenes/${b.bank}_${b.b}_scene`);
+  return { ok: true };
+}
+// Swap two banks: exchange all 6 scenes between them.
+async function apiSwapBanks(b) {
+  for (let s = 1; s <= 6; s++) await swapDirContents(`_arbhar_scenes/${b.a}_${s}_scene`, `_arbhar_scenes/${b.b}_${s}_scene`);
+  return { ok: true };
+}
 
 const api = {
   async get(url) {
@@ -286,6 +311,7 @@ const api = {
       '/api/clear-slot': apiClearSlot, '/api/restore': apiRestore,
       '/api/staging/mkdir': apiMkdir, '/api/staging/move': apiMove,
       '/api/swap-slots': apiSwapSlots, '/api/swap-layers': apiSwapLayers,
+      '/api/swap-scenes': apiSwapScenes, '/api/swap-banks': apiSwapBanks,
     };
     if (map[path]) return map[path](body);
     throw new Error('Unknown POST ' + path);
@@ -522,7 +548,7 @@ function layerFile(cell, layer) {
   return (cell.files || []).find((f) => new RegExp(`^${layer}_`).test(f.name)) || null;
 }
 
-function selRow(label, active, onPick, filledFn) {
+function selRow(label, active, onPick, filledFn, swap) {
   const row = document.createElement('div');
   row.className = 'sel-row';
   row.innerHTML = `<span class="sel-label">${label}</span>`;
@@ -531,6 +557,25 @@ function selRow(label, active, onPick, filledFn) {
     b.className = 'sel-btn' + (i === active ? ' active' : '') + (filledFn(i) ? ' filled' : '');
     b.textContent = i;
     b.onclick = () => onPick(i);
+    if (swap) {                                     // drag one selector onto another to swap them
+      b.draggable = true;
+      b.title = `drag onto another ${swap.type} to swap`;
+      b.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('application/x-arbhar-sel', JSON.stringify({ type: swap.type, index: i }));
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      b.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('application/x-arbhar-sel')) { e.preventDefault(); b.classList.add('over'); } });
+      b.addEventListener('dragleave', () => b.classList.remove('over'));
+      b.addEventListener('drop', (e) => {
+        b.classList.remove('over');
+        const d = e.dataTransfer.getData('application/x-arbhar-sel');
+        if (!d) return;
+        let it; try { it = JSON.parse(d); } catch { return; }
+        if (it.type !== swap.type || it.index === i) return;
+        e.preventDefault(); e.stopPropagation();
+        swap.onSwap(it.index, i);
+      });
+    }
     row.appendChild(b);
   }
   return row;
@@ -544,14 +589,15 @@ function renderSceneView() {
 
   const controls = $('#scene-controls');
   controls.innerHTML = '';
-  controls.appendChild(selRow('Bank', state.sceneBank, (v) => { stopPlayback(); clearEditor(); state.sceneBank = v; state.sceneLayer = 1; renderSceneView(); }, bankFilled));
-  controls.appendChild(selRow('Scene', state.sceneCell, (v) => { stopPlayback(); clearEditor(); state.sceneCell = v; state.sceneLayer = 1; renderSceneView(); }, sceneFilled));
+  controls.appendChild(selRow('Bank', state.sceneBank, (v) => { stopPlayback(); clearEditor(); state.sceneBank = v; state.sceneLayer = 1; renderSceneView(); }, bankFilled, { type: 'bank', onSwap: swapBanks }));
+  controls.appendChild(selRow('Scene', state.sceneCell, (v) => { stopPlayback(); clearEditor(); state.sceneCell = v; state.sceneLayer = 1; renderSceneView(); }, sceneFilled, { type: 'scene', onSwap: swapScenes }));
 
   // Layers | Preset sub-tabs (both share the Bank+Scene selection above).
   const onPreset = state.sceneTab === 'preset';
   $('#sst-layers').classList.toggle('active', !onPreset);
   $('#sst-preset').classList.toggle('active', onPreset);
   $('#sst-preset').classList.toggle('has-preset', !!cur.hasPreset);
+  $('#sst-clear').classList.toggle('hidden', onPreset || !cur.files.length);
   $('#scene-grid').classList.toggle('hidden', onPreset);
   $('#preset-panel').classList.toggle('hidden', !onPreset);
   if (onPreset) { renderPreset(); return; }
@@ -714,6 +760,7 @@ async function renderPreset() {
 // Sub-tab switching (wired once; the buttons live in the static markup).
 $('#sst-layers').onclick = () => { if (state.sceneTab === 'layers') return; state.sceneTab = 'layers'; renderSceneView(); };
 $('#sst-preset').onclick = () => { if (state.sceneTab === 'preset') return; state.sceneTab = 'preset'; stopPlayback(); renderSceneView(); };
+$('#sst-clear').onclick = clearSceneLayers;
 
 function selectLayer(layer, { play = true } = {}) {
   const cur = cellAt(state.sceneBank, state.sceneCell) || { files: [] };
@@ -790,6 +837,45 @@ async function swapLayers(a, b) {
   } catch (e) { toast(e.message, true); }
 }
 
+async function swapScenes(a, b) {
+  const bank = state.sceneBank, body = { bank, a, b };
+  try {
+    stopPlayback(); clearEditor();
+    await api.post('/api/swap-scenes', body);
+    await loadGrid();
+    toast(`Swapped scene ${bank}.${a} ↔ ${bank}.${b}`, false, async () => {
+      try { await api.post('/api/swap-scenes', body); await loadGrid(); toast('Swap undone.'); } catch (e) { toast(e.message, true); }
+    });
+  } catch (e) { toast(e.message, true); }
+}
+
+async function swapBanks(a, b) {
+  const body = { a, b };
+  try {
+    stopPlayback(); clearEditor();
+    await api.post('/api/swap-banks', body);
+    await loadGrid();
+    toast(`Swapped bank ${a} ↔ bank ${b} (all scenes)`, false, async () => {
+      try { await api.post('/api/swap-banks', body); await loadGrid(); toast('Swap undone.'); } catch (e) { toast(e.message, true); }
+    });
+  } catch (e) { toast(e.message, true); }
+}
+
+// Empty all 6 layers of the current scene (audio only; preset.txt is preserved).
+async function clearSceneLayers() {
+  const bank = state.sceneBank, cell = state.sceneCell;
+  const cur = cellAt(bank, cell);
+  if (!cur || !cur.files.length) { toast('Scene already empty.'); return; }
+  const n = cur.files.length;
+  try {
+    const r = await api.post('/api/clear-slot', { kind: 'scene', lib: 1, bank, cell });
+    stopIfPlaying(slotRel(bank, cell), { folder: true });
+    clearEditor();
+    await loadGrid();
+    toast(`Scene ${bank}.${cell} cleared (${n} layer${n > 1 ? 's' : ''}).`, false, () => undoRestore(r.restore));
+  } catch (e) { toast(e.message, true); }
+}
+
 // Fill the current scene's 6 layers from a reserve folder's first 6 audio files.
 async function fillSceneFromFolder(folderPath) {
   try {
@@ -823,6 +909,7 @@ async function fillSceneFromFolder(folderPath) {
 async function clearSlotWithUndo(bank, cell) {
   try {
     const r = await api.post('/api/clear-slot', { kind: state.kind, lib: state.lib, bank, cell });
+    stopIfPlaying(slotRel(bank, cell), { folder: true });
     if (state.selected && state.selected.bank === bank && state.selected.cell === cell) {
       state.selected = null; clearEditor();
     }
@@ -938,6 +1025,7 @@ function startRename(row, f, bank, cell) {
 async function deleteFile(f, bank, cell) {
   try {
     const r = await api.post('/api/delete', { kind: state.kind, lib: state.lib, bank, cell, name: f.name });
+    stopIfPlaying(slotRel(bank, cell) + '/' + f.name);
     await loadGrid();
     if (state.kind !== 'scene') renderInspector();
     if (editor.name === f.name) clearEditor();
@@ -1397,6 +1485,14 @@ function stopPlayback() {
   $('#pl-name').textContent = '—';
   $('#pl-progress').style.width = '0%';
   $('#pl-time').textContent = '0:00';
+}
+
+// Stop playback if the sample being removed is the one currently playing.
+// rel is a root-relative path; folder:true matches any file inside that folder.
+function stopIfPlaying(rel, { folder = false } = {}) {
+  if (!currentSrcKey) return;
+  const base = '/api/audio?path=' + encodeURIComponent(rel);
+  if (folder ? currentSrcKey.startsWith(base + '%2F') : currentSrcKey === base) stopPlayback();
 }
 
 function togglePlay() {

@@ -10,6 +10,8 @@ const $ = (sel) => document.querySelector(sel);
   const name = /win/i.test(p) ? 'File Explorer' : /mac/i.test(p) ? 'Finder' : 'your file manager';
   document.querySelectorAll('.file-mgr').forEach((el) => { el.textContent = name; });
 })();
+// Default reserve hint (captured after the file-manager name is filled in).
+const RESERVE_HINT_DEFAULT = document.querySelector('.staging-drop-hint').innerHTML;
 
 /* ===================== File System Access data layer =====================
  * No server: the browser reads/writes the chosen folders directly.
@@ -749,10 +751,13 @@ async function loadStaging() {
   ul.innerHTML = '';
   $('#stg-path').textContent = reserveHandle ? reserveHandle.name : 'no folder';
   $('#stg-open').classList.toggle('hidden', !!reserveHandle);   // only offer the picker when none is set
-  if (!reserveHandle) {
+  const hint = document.querySelector('.staging-drop-hint');
+  if (!reserveHandle) {                       // optional feature: make that clear, don't look broken
+    hint.textContent = 'Optional. Choose a folder below to stage and organise samples before dropping them into the library.';
     $('#staging-panel').classList.remove('has-items');
     return;
   }
+  hint.innerHTML = RESERVE_HINT_DEFAULT;
   const total = await renderNode('', 0, ul);
   $('#staging-panel').classList.toggle('has-items', total > 0);
 }

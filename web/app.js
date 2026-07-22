@@ -1198,7 +1198,9 @@ function audioCtx() {
 function fmtDur(s) { return (s || 0).toFixed(2) + ' s'; }
 
 async function setEditor(rel, name, scope = 'root') {
-  editor.rel = rel; editor.name = name; editor.scope = scope; editor.peaks = null;
+  const seq = (editor.seq = (editor.seq || 0) + 1);   // guards against out-of-order decodes
+  editor.rel = rel; editor.name = name; editor.scope = scope;
+  editor.buf = null; editor.peaks = null;             // clear now: no stale waveform while decoding
   editor.sel = { start: 0, end: 1 }; editor.fadeIn = 0; editor.fadeOut = 0; editor.normalize = false;
   $('#fade-in').value = 0; $('#fade-out').value = 0;
   $('#fade-in-val').textContent = '0 ms'; $('#fade-out-val').textContent = '0 ms';
@@ -1208,8 +1210,11 @@ async function setEditor(rel, name, scope = 'root') {
   $('#insp-sub').textContent = prettyName(name);
   try {
     const file = scope === 'reserve' ? await fileByReservePath(rel) : await fileByRootRel(rel);
-    editor.buf = await audioCtx().decodeAudioData(await file.arrayBuffer());
-  } catch (e) { editor.buf = null; toast('Audio decoding failed.', true); }
+    const buf = await audioCtx().decodeAudioData(await file.arrayBuffer());
+    if (seq !== editor.seq) return;                   // a newer selection superseded this one
+    editor.buf = buf; editor.peaks = null;
+  } catch (e) { if (seq === editor.seq) { editor.buf = null; toast('Audio decoding failed.', true); } }
+  if (seq !== editor.seq) return;
   drawWave();
   if (editor.buf && !playheadRAF && audio && !audio.paused) playheadRAF = requestAnimationFrame(tickPlayhead);
 }

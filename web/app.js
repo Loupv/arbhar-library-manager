@@ -294,6 +294,21 @@ async function apiSwapBanks(b) {
   for (let s = 1; s <= 6; s++) await swapDirContents(`_arbhar_scenes/${b.a}_${s}_scene`, `_arbhar_scenes/${b.b}_${s}_scene`);
   return { ok: true };
 }
+// Reindex a slot's files to the given order (rewrites the N_ prefixes = the load order).
+async function apiReorderSlot(b) {
+  const dir = await dirByPath(rootHandle, slotRelPath(b.kind, b.lib, b.bank, b.cell), true);
+  const bytes = new Map();
+  for (const f of await listAudio(dir)) bytes.set(f.name, await (await dir.getFileHandle(f.name)).getFile().then((x) => x.arrayBuffer()));
+  for (const name of bytes.keys()) await dir.removeEntry(name);
+  let i = 1;
+  for (const name of b.order) {
+    if (!bytes.has(name)) continue;
+    const nn = `${i}_${name.replace(/^\d+_/, '')}`; i++;
+    const h = await dir.getFileHandle(nn, { create: true });
+    const w = await h.createWritable(); await w.write(bytes.get(name)); await w.close();
+  }
+  return { ok: true };
+}
 
 const api = {
   async get(url) {
@@ -312,6 +327,7 @@ const api = {
       '/api/staging/mkdir': apiMkdir, '/api/staging/move': apiMove,
       '/api/swap-slots': apiSwapSlots, '/api/swap-layers': apiSwapLayers,
       '/api/swap-scenes': apiSwapScenes, '/api/swap-banks': apiSwapBanks,
+      '/api/reorder-slot': apiReorderSlot,
     };
     if (map[path]) return map[path](body);
     throw new Error('Unknown POST ' + path);
@@ -989,7 +1005,18 @@ function renderInspector() {
   empty.classList.add('hidden');
   const { bank, cell } = state.selected;
   const c = cellAt(bank, cell) || { files: [] };
-  c.files.forEach((f) => list.appendChild(fileRow(f, bank, cell)));
+  const rows = slotLoadRows(c.files);
+  if (c.files.length > 1) {
+    const loaded = rows.filter((r) => r.loads).length;
+    const total = rows.filter((r) => r.loads).reduce((s, r) => s + (r.dur || 0), 0);
+    const head = document.createElement('div');
+    head.className = 'slot-stack-head';
+    const ignored = c.files.length - loaded;
+    head.innerHTML = `<span>Stacked layer · ${loaded}/${c.files.length} load · ~${total.toFixed(1)} s</span>`
+      + (ignored ? `<span class="slot-stack-warn">${ignored} ignored (past 10 s)</span>` : '');
+    list.appendChild(head);
+  }
+  rows.forEach((r, i) => list.appendChild(fileRow(r.f, bank, cell, { index: i, count: rows.length, loads: r.loads, dur: r.dur })));
   if (!c.files.length) {
     const p = document.createElement('p');
     p.className = 'empty-note'; p.style.marginTop = '20px';
@@ -998,18 +1025,22 @@ function renderInspector() {
   }
 }
 
-function fileRow(f, bank, cell) {
+function fileRow(f, bank, cell, ctx = {}) {
+  const { index = 0, count = 1, loads = true, dur = null } = ctx;
   const li = document.createElement('li');
-  li.className = 'file-row';
+  li.className = 'file-row' + (loads ? '' : ' ignored');
   li.draggable = true;
   const relPath = slotRel(bank, cell) + '/' + f.name;
   const info = f.info ? `${(f.info.sampleRate / 1000).toFixed(f.info.sampleRate % 1000 ? 1 : 0)}k · ${f.info.bits}bit · ${f.info.channels === 2 ? 'stéréo' : 'mono'}` : '';
   const ideal = f.info && f.info.sampleRate === 48000 && f.info.bits === 24;
-  li.innerHTML = `<span class="play">▶</span>
+  const multi = count > 1;
+  const durTxt = dur != null ? `${dur.toFixed(1)} s · ` : '';
+  li.innerHTML = `${multi ? `<span class="reorder"><button class="mini up" title="Move up" ${index === 0 ? 'disabled' : ''}>▲</button><button class="mini down" title="Move down" ${index === count - 1 ? 'disabled' : ''}>▼</button></span>` : ''}
+    <span class="play">▶</span>
     <div class="file-main">
-      <div class="file-name">${escapeHtml(prettyName(f.name))}</div>
+      <div class="file-name">${escapeHtml(prettyName(f.name))}${loads || !multi ? '' : ' <span class="ignored-tag">ignored (past 10 s)</span>'}</div>
       <div class="file-meta">
-        ${info ? `<span class="badge ${ideal ? 'ok' : ''}">${info}</span>` : ''}
+        ${durTxt}${info ? `<span class="badge ${ideal ? 'ok' : ''}">${info}</span>` : ''}
         ${fmtSize(f.size)} · <span style="opacity:.6">${escapeHtml(f.name)}</span>
       </div>
     </div>
@@ -1020,6 +1051,10 @@ function fileRow(f, bank, cell) {
   li.querySelector('.file-main').onclick = () => { playAudio('/api/audio?path=' + encodeURIComponent(relPath), prettyName(f.name), li); setEditor(relPath, f.name); };
   li.querySelector('.rn').onclick = (e) => { e.stopPropagation(); startRename(li, f, bank, cell); };
   li.querySelector('.del').onclick = (e) => { e.stopPropagation(); deleteFile(f, bank, cell); };
+  if (multi) {
+    li.querySelector('.up').onclick = (e) => { e.stopPropagation(); moveInSlot(bank, cell, f.name, -1); };
+    li.querySelector('.down').onclick = (e) => { e.stopPropagation(); moveInSlot(bank, cell, f.name, 1); };
+  }
 
   li.addEventListener('dragstart', (e) => {
     e.dataTransfer.setData('application/x-arbhar-file', JSON.stringify({ path: relPath, name: f.name }));
@@ -1031,6 +1066,40 @@ function fileRow(f, bank, cell) {
 function slotRel(bank, cell) {
   if (state.kind === 'scene') return `_arbhar_scenes/${bank}_${cell}_scene`;
   return `${LIB_FOLDERS[state.lib - 1]}/${bank}_${cell}_sample`;
+}
+
+// Estimate a PCM WAV's duration from its header (sampleRate/channels/bits) + file size — no decode.
+function estDur(f) {
+  const i = f.info;
+  if (!i || !i.sampleRate || !i.bits || !i.channels) return null;
+  const byteRate = i.sampleRate * i.channels * (i.bits / 8);
+  return byteRate > 0 ? Math.max(0, (f.size - 44) / byteRate) : null;
+}
+// Which files of a library slot the module actually loads: it stacks them in order and
+// stops once the cumulative length has reached 10 s (the crossing file is included).
+function slotLoadRows(files) {
+  let running = 0;
+  return files.map((f) => {
+    const dur = estDur(f);
+    const loads = running < 10;
+    if (loads && dur != null) running += dur;
+    return { f, dur, loads };
+  });
+}
+
+// Move a file up/down within its slot (rewrites the N_ prefixes) and reselect the slot.
+async function moveInSlot(bank, cell, name, delta) {
+  const c = cellAt(bank, cell); if (!c) return;
+  const order = c.files.map((f) => f.name);
+  const i = order.indexOf(name), j = i + delta;
+  if (i < 0 || j < 0 || j >= order.length) return;
+  [order[i], order[j]] = [order[j], order[i]];
+  try {
+    await api.post('/api/reorder-slot', { kind: state.kind, lib: state.lib, bank, cell, order });
+    stopPlayback();                          // prefixes changed → old playing/editor refs are stale
+    await loadGrid();
+    selectSlot(bank, cell, { play: false });
+  } catch (e) { toast(e.message, true); }
 }
 
 function startRename(row, f, bank, cell) {
@@ -1305,20 +1374,16 @@ function wireExternalDrop(el, slot) {
     el.classList.remove('over');
     if (e.dataTransfer.files && e.dataTransfer.files.length) {
       e.preventDefault();
-      const files = [...e.dataTransfer.files];
-      let ok = 0;
-      for (let i = 0; i < files.length; i++) {
-        const rep = i === 0 ? '&replace=1' : '';            // first replaces, extras append
-        ok += await uploadFiles([files[i]], `dest=slot&kind=${state.kind}&lib=${state.lib}&bank=${slot.bank}&cell=${slot.cell}${rep}`);
-      }
-      if (ok) toast(`Slot ${slot.bank}.${slot.cell} replaced.`);
+      // Add to the slot's stack (kept separate; arbhar layers them in order). Replace = clear (✕) then drop.
+      const n = await uploadFiles(e.dataTransfer.files, `dest=slot&kind=${state.kind}&lib=${state.lib}&bank=${slot.bank}&cell=${slot.cell}`);
+      if (n) toast(`Slot ${slot.bank}.${slot.cell} · ${n} sample${n > 1 ? 's' : ''} added.`);
       await loadGrid();
       selectSlot(slot.bank, slot.cell, { play: false });
     }
   });
 }
 
-// Drop a staged sample onto a pad (library) → replace the slot.
+// Drop a staged sample onto a pad (library) → add it to the slot's stack.
 function wireStagingDrop(el, slot) {
   el.addEventListener('drop', async (e) => {
     const stg = e.dataTransfer.getData('application/x-arbhar-staging');
@@ -1327,8 +1392,8 @@ function wireStagingDrop(el, slot) {
     const item = JSON.parse(stg);
     if (item.isDir) return;
     try {
-      await api.post('/api/copy-from-staging', { path: item.path, kind: state.kind, lib: state.lib, bank: slot.bank, cell: slot.cell, replace: true });
-      toast(`Slot ${slot.bank}.${slot.cell} ← “${item.name}”.`);
+      await api.post('/api/copy-from-staging', { path: item.path, kind: state.kind, lib: state.lib, bank: slot.bank, cell: slot.cell });
+      toast(`Slot ${slot.bank}.${slot.cell} ← “${item.name}” added.`);
       await loadGrid();
       selectSlot(slot.bank, slot.cell, { play: false });
     } catch (err) { toast(err.message, true); }

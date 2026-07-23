@@ -365,6 +365,19 @@ input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 4
 .badge { display: inline-block; padding: 1px 6px; border-radius: 4px; background: var(--panel-2);
   border: 1px solid var(--line-soft); color: var(--gold-dim); font-size: 9px; margin-right: 4px; }
 .badge.ok { color: var(--ok); border-color: rgba(139,168,106,.4); }
+
+/* ---- stacked library slot ---- */
+.slot-stack-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  font-size: 11px; color: var(--gold-dim); margin: 2px 2px 8px; letter-spacing: .02em;
+}
+.slot-stack-warn { color: var(--danger); }
+.file-row .reorder { display: flex; flex-direction: column; gap: 1px; }
+.file-row .reorder .mini { padding: 0 3px; font-size: 8px; line-height: 1.1; }
+.file-row.ignored { opacity: .55; }
+.file-row.ignored:hover { opacity: .8; }
+.ignored-tag { color: var(--danger); font-size: 9px; margin-left: 6px; letter-spacing: .02em; }
+
 /* ---- scene sub-tabs + preset editor ---- */
 .scene-subtabs { display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid var(--line-soft); margin-bottom: -6px; }
 .scene-clear {

@@ -110,6 +110,8 @@ html, body {
   padding: 12px 22px; border-bottom: 1px solid var(--line); background: var(--bg-2);
 }
 .root-info { display: flex; align-items: center; gap: 12px; }
+.autoconv { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.autoconv input { accent-color: var(--gold); cursor: pointer; }
 .root-path { color: var(--muted); font-size: 12px; max-width: 44vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .banks { padding: 10px 22px; border-bottom: 1px solid var(--line-soft); background: var(--bg-2); }

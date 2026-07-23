@@ -145,14 +145,16 @@ async function apiStagingList(p) {
 async function apiCopyFromStaging(b) {
   const srcFile = await fileByReservePath(b.path);
   const dir = await dirByPath(rootHandle, slotRelPath(b.kind, b.lib, b.bank, b.cell), true);
-  const ext = extOf(b.path), stem = baseOf(b.path).replace(/^\d+_/, '').replace(/\.[^.]+$/, '');
+  const stem = baseOf(b.path).replace(/^\d+_/, '').replace(/\.[^.]+$/, '');
+  const ing = await ingest(await srcFile.arrayBuffer(), `${stem}${extOf(b.path)}`);
+  const ext = extOf(ing.name);
   let name;
   if (b.kind === 'scene' && b.layer) { await clearAudio(dir, b.layer); name = `${b.layer}_${stem}${ext}`; }
   else if (b.replace) { await clearAudio(dir); name = `1_${stem}${ext}`; }
   else { name = `${await nextIndex(dir)}_${stem}${ext}`; }
   name = await uniqueName(dir, name);
   const fh = await dir.getFileHandle(name, { create: true });
-  const w = await fh.createWritable(); await w.write(await srcFile.arrayBuffer()); await w.close();
+  const w = await fh.createWritable(); await w.write(ing.bytes); await w.close();
   return { ok: true, name };
 }
 async function apiCopyToStaging(b) {
@@ -178,9 +180,11 @@ async function apiFillScene(b) {
   }
   let layer = 1;
   for (const f of files) {
-    const stem = f.name.replace(/^\d+_/, '').replace(/\.[^.]+$/, ''), ext = extOf(f.name);
-    const name = await uniqueName(dir, `${layer}_${stem}${ext}`);
-    await copyInto(await srcDir.getFileHandle(f.name), dir, name);
+    const stem = f.name.replace(/^\d+_/, '').replace(/\.[^.]+$/, '');
+    const ing = await ingest(await (await srcDir.getFileHandle(f.name)).getFile().then((x) => x.arrayBuffer()), `${stem}${extOf(f.name)}`);
+    const name = await uniqueName(dir, `${layer}_${stem}${extOf(ing.name)}`);
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w = await fh.createWritable(); await w.write(ing.bytes); await w.close();
     layer++;
   }
   return { ok: true, count: files.length, restore };
@@ -427,6 +431,11 @@ $('#pick-root').onclick = chooseRoot;
 $('#pick-reserve').onclick = chooseReserve;
 $('#stg-open').onclick = chooseReserve;   // pick / change the reserve folder from inside the app
 // (#enter handler is wired in boot() so it can re-grant folder permission first)
+
+// Auto-convert dropped audio to 48 kHz / 24-bit (opt-in, persisted).
+let autoConvert = localStorage.getItem('arbhar-autoconv') === '1';
+$('#autoconv').checked = autoConvert;
+$('#autoconv').onchange = (e) => { autoConvert = e.target.checked; localStorage.setItem('arbhar-autoconv', autoConvert ? '1' : '0'); };
 
 /* ===================== APP ===================== */
 function enterApp() {
@@ -1336,13 +1345,15 @@ async function uploadFiles(fileList, destQuery) {
         const w = await fh.createWritable(); await w.write(await file.arrayBuffer()); await w.close();
       } else {
         const dir = await dirByPath(rootHandle, slotRelPath(q.kind, +q.lib, +q.bank, +q.cell), true);
+        const ing = await ingest(await file.arrayBuffer(), `${stem}${ext}`);   // convert on tile ingest if enabled
+        const ext2 = extOf(ing.name);
         let name;
-        if (q.kind === 'scene' && q.layer) { await clearAudio(dir, +q.layer); name = `${q.layer}_${stem}${ext}`; }
-        else if (q.replace) { await clearAudio(dir); name = `1_${stem}${ext}`; }
-        else { name = `${await nextIndex(dir)}_${stem}${ext}`; }
+        if (q.kind === 'scene' && q.layer) { await clearAudio(dir, +q.layer); name = `${q.layer}_${stem}${ext2}`; }
+        else if (q.replace) { await clearAudio(dir); name = `1_${stem}${ext2}`; }
+        else { name = `${await nextIndex(dir)}_${stem}${ext2}`; }
         name = await uniqueName(dir, name);
         const fh = await dir.getFileHandle(name, { create: true });
-        const w = await fh.createWritable(); await w.write(await file.arrayBuffer()); await w.close();
+        const w = await fh.createWritable(); await w.write(ing.bytes); await w.close();
       }
       ok++;
     } catch (e) { toast(e.message, true); }
@@ -1835,6 +1846,26 @@ function encodeWav24(chans, sampleRate) {
     }
   }
   return view.buffer;
+}
+
+// Resample arbitrary audio bytes to a 48 kHz / 24-bit WAV. Returns null if decoding fails.
+async function to48k24(bytes) {
+  try {
+    const buf = await new OfflineAudioContext(1, 1, 48000).decodeAudioData(bytes.slice(0));
+    const chans = [];
+    for (let c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c));
+    return encodeWav24(chans, 48000);
+  } catch { return null; }
+}
+// When Auto 48k/24-bit is on, convert ingested audio unless it is already ideal.
+// Returns { bytes, name } — name switches to .wav on conversion.
+async function ingest(bytes, name) {
+  if (!autoConvert) return { bytes, name };
+  const info = wavInfo(bytes.slice(0, 8192));
+  if (info && info.sampleRate === 48000 && info.bits === 24) return { bytes, name };   // already ideal
+  const conv = await to48k24(bytes);
+  if (!conv) { toast(`Kept “${name}” as-is (couldn’t convert).`, true); return { bytes, name }; }
+  return { bytes: conv, name: name.replace(/\.[^.]+$/, '.wav') };
 }
 
 function previewEdit() {

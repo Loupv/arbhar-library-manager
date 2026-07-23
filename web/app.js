@@ -655,25 +655,42 @@ function renderSceneView() {
 /* ===================== SCENE PRESET EDITOR (preset.txt) ===================== */
 // A curated selection of the arbhar V2 preset parameters. Only these lines are
 // patched in preset.txt; every other parameter and all documentation are kept as-is.
+// All 24 arbhar V2 preset parameters (per the firmware 2.0 manual). Only these lines
+// are patched in preset.txt; documentation and any other content is preserved.
+const OFF_ON = [['0', 'Disable'], ['1', 'Enable']];
 const PRESET_FIELDS = [
   { group: 'Identity' },
-  { key: 'PRESET_NAME', label: 'Preset name', type: 'text', ph: '(optional)' },
+  { key: 'PRESET_NAME', label: 'Preset name', type: 'text', ph: '(optional)', full: true },
   { group: 'Loading' },
   { key: 'LoadConfiguration', label: 'Load configuration', type: 'select', opts: [['0', 'Load nothing'], ['1', 'Load preset'], ['2', 'Load layers'], ['3', 'Load scene (preset + layers)']] },
   { group: 'Input & routing' },
   { key: 'InputMode', label: 'Input mode', type: 'select', opts: [['0', 'Mono'], ['1', 'Stereo']] },
+  { key: 'AnalogEmulation', label: 'Analogue emulation (Onset in)', type: 'select', opts: OFF_ON },
   { key: 'PhaseSwitch', label: 'Phase', type: 'select', opts: [['0', 'Phase-inverted'], ['1', 'Phase-corrected']] },
   { key: 'ModCV', label: 'Mod CV target', type: 'select', opts: [['0', 'None'], ['1', 'Panning'], ['2', 'Hold'], ['3', 'Reverb'], ['4', 'Delay']] },
   { group: 'Capture' },
   { key: 'CaptureCVMode', label: 'Capture CV mode', type: 'select', opts: [['0', 'Latching'], ['1', 'Momentary'], ['2', 'Retrigger']] },
-  { key: 'AccumulativeCaptureMode', label: 'Accumulative capture', type: 'select', opts: [['0', 'Disable'], ['1', 'Enable']] },
-  { group: 'Grain engine' },
+  { key: 'CaptureButtonMode', label: 'Capture button mode', type: 'select', opts: [['0', 'Latching'], ['1', 'Momentary']] },
+  { key: 'ActivateCaptureOnButtonUp', label: 'Capture on button up', type: 'select', opts: OFF_ON },
+  { key: 'AccumulativeCaptureMode', label: 'Accumulative capture', type: 'select', opts: OFF_ON },
+  { key: 'LinkAccumulativeRecordingCaptureAsGate', label: 'Link accumulative ↔ button mode', type: 'select', opts: OFF_ON },
+  { group: 'Onset / Strike' },
   { key: 'OnsetMode', label: 'Onset mode', type: 'select', opts: [['1', 'alpha'], ['2', 'beta'], ['3', 'gamma'], ['4', 'delta'], ['5', 'epsilon'], ['6', 'zeta']] },
-  { key: 'WavetableCentreFrequency', label: 'Wavetable centre freq', type: 'number', step: '0.001', unit: 'Hz' },
+  { key: 'StrikeButtonToTrigger', label: 'Strike button → trigger out', type: 'select', opts: OFF_ON },
+  { key: 'StrikeCVDelay', label: 'Strike input trigger delay', type: 'number', step: '1', min: '0', unit: 'ms' },
+  { group: 'Grain randomisation' },
+  { key: 'RandomTimingWithRandomIntensity', label: 'Random grain timing', type: 'select', opts: OFF_ON },
+  { key: 'RandomAmpWithRandomIntensity', label: 'Random grain amplitude', type: 'select', opts: OFF_ON },
   { group: 'Follow / Scan' },
   { key: 'FollowMode', label: 'Follow mode', type: 'select', opts: [['0', 'Scan'], ['1', 'Follow']] },
   { key: 'FollowSpeedDirection', label: 'Follow speed direction', type: 'select', opts: [['0', 'Unidirectional'], ['1', 'Bidirectional'], ['2', 'Inverted unidirectional']] },
-  { key: 'FollowLoop', label: 'Follow loop', type: 'select', opts: [['0', 'Disable'], ['1', 'Enable']] },
+  { key: 'FollowScanOffset', label: 'Follow scan offset', type: 'number', step: '1', min: '0', unit: 'ms' },
+  { key: 'FollowPositionOffsetWithScanCV', label: 'Scan CV in Follow', type: 'select', opts: [['0', 'Controls speed'], ['1', 'Controls offset']] },
+  { key: 'FollowLoop', label: 'Follow loop', type: 'select', opts: OFF_ON },
+  { key: 'FollowSetLoopLengthWithHold', label: 'Follow loop length = Hold', type: 'select', opts: OFF_ON },
+  { group: 'Wavetable / Pitch' },
+  { key: 'WavetableCentreFrequency', label: 'Wavetable centre freq', type: 'number', step: '0.001', min: '0', unit: 'Hz' },
+  { key: 'QuantiseTable', label: 'Quantise table (semitone pairs)', type: 'text', full: true, ph: '1 -2 2 -1 3 -4 …' },
 ];
 
 // Read the current value of a preset key, or null if absent. Leading whitespace tolerated.
@@ -760,7 +777,7 @@ async function renderPreset() {
   const inputs = {};
   for (const f of PRESET_FIELDS) {
     if (f.group) { const g = document.createElement('div'); g.className = 'preset-group'; g.textContent = f.group; form.appendChild(g); continue; }
-    const row = document.createElement('label'); row.className = 'preset-field';
+    const row = document.createElement('label'); row.className = 'preset-field' + (f.full ? ' preset-field--full' : '');
     const lab = document.createElement('span'); lab.className = 'pf-label'; lab.textContent = f.label; row.appendChild(lab);
     const val = presetGet(text, f.key);
     let el;
@@ -772,6 +789,7 @@ async function renderPreset() {
     } else {
       el = document.createElement('input'); el.type = f.type === 'number' ? 'number' : 'text';
       if (f.step) el.step = f.step;
+      if (f.min != null) el.min = f.min;
       if (f.ph) el.placeholder = f.ph;
       el.value = val != null ? val : '';
     }

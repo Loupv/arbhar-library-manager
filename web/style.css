@@ -407,6 +407,9 @@ input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 4
 }
 .preset-group:first-child { margin-top: 0; }
 .preset-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.preset-field--full { grid-column: 1 / -1; }
+.preset-field--full .pf-control { flex: 1; }
+.preset-field--full .pf-input { flex: 1; min-width: 0; }
 .pf-label { color: var(--muted); font-size: 12px; }
 .pf-control { display: flex; align-items: center; gap: 6px; }
 .pf-unit { color: var(--gold-dim); font-size: 11px; }

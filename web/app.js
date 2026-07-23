@@ -382,8 +382,12 @@ async function ensurePermission(handle) {
   return (await handle.requestPermission(opts)) === 'granted';
 }
 
+async function isBrave() {
+  try { return !!(navigator.brave && await navigator.brave.isBrave()); } catch { return false; }
+}
+
 async function chooseRoot() {
-  if (!window.showDirectoryPicker) { setupStatus('This browser lacks the File System Access API — use Chrome, Edge or Brave.', true); return; }
+  if (!window.showDirectoryPicker) { setupStatus('This browser lacks the File System Access API — use Chrome or Edge (in Brave, enable it in brave://flags).', true); return; }
   try {
     rootHandle = await window.showDirectoryPicker({ id: 'arbhar-root', mode: 'readwrite' });
     await idb.set('root', rootHandle);
@@ -1797,7 +1801,11 @@ window.addEventListener('resize', () => { if (editor.buf) drawWave(); });
 /* ===================== BOOT ===================== */
 (async function boot() {
   if (!window.showDirectoryPicker) {
-    setupStatus('This browser can’t edit local files (no File System Access API). Please use Chrome, Edge or Brave.', true);
+    setupStatus(
+      (await isBrave())
+        ? 'Brave blocks the File System Access API by default, so folder access is off. Open brave://flags, search “File System Access”, set it to Enabled and relaunch Brave — or use Chrome or Edge.'
+        : 'This browser can’t edit local files (no File System Access API). Please use Chrome or Edge.',
+      true);
     $('#pick-root').disabled = true; $('#pick-reserve').disabled = true;
     return;
   }

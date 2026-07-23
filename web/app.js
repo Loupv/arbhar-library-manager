@@ -1757,7 +1757,7 @@ function drawWave() {
   }
   const over = dur > 13.05;   // arbhar layer buffer holds max 13 s; longer is truncated on load
   $('#edit-info').innerHTML = `durée <b>${fmtDur(editor.buf.duration)}</b> · sélection <b>${fmtDur(dur)}</b> · ${editor.buf.sampleRate / 1000}k · ${editor.buf.numberOfChannels === 2 ? 'stéréo' : 'mono'}`
-    + (over ? ' · <span class="edit-warn">⚠ over 13 s — the module loads only the first 13 s; trim to fit</span>' : '');
+    + (over ? '<span class="edit-warn">⚠ over 13s</span>' : '');
 }
 
 // Animate the playhead while the editor's file plays.

@@ -122,7 +122,7 @@ async function apiGrid(kind, lib) {
     const dir = await tryDir(rootHandle, slotRelPath(kind, lib, bank, cell));
     const files = dir ? await listAudio(dir) : [];
     const slot = { bank, cell, files, exists: !!dir };
-    if (kind === 'scene') slot.hasPreset = dir ? await hasEntry(dir, 'preset.txt') : false;
+    if (kind === 'scene') slot.hasPreset = dir ? !!(await findPresetName(dir)) : false;
     cells.push(slot);
   }
   return { kind, lib, cells };
@@ -677,11 +677,34 @@ function presetSet(text, key, val) {
   return text.replace(re, (_, p1) => p1 + val);
 }
 
-function scenePresetRel(bank, cell) { return `_arbhar_scenes/${bank}_${cell}_scene/preset.txt`; }
+function sceneDirRel(bank, cell) { return `_arbhar_scenes/${bank}_${cell}_scene`; }
 
-async function readPresetText(bank, cell) {
-  try { const f = await fileByRootRel(scenePresetRel(bank, cell)); return await f.text(); }
-  catch { return null; }
+// The arbhar identifies a config by the #ARB header, not the file name — it may be
+// preset.txt or a renamed one (arbharClassic.txt, MidSide.txt…). Return the config
+// file name in a scene folder (any .txt starting with #ARB; preset.txt preferred), or null.
+async function findPresetName(dir) {
+  if (!dir) return null;
+  const txts = [];
+  for await (const [name, h] of dir.entries()) {
+    if (h.kind === 'file' && !name.startsWith('.') && /\.txt$/i.test(name)) txts.push(name);
+  }
+  txts.sort((a, b) => (/^preset\.txt$/i.test(a) ? -1 : /^preset\.txt$/i.test(b) ? 1 : a.localeCompare(b, undefined, { numeric: true })));
+  for (const name of txts) {
+    try {
+      const head = await (await dir.getFileHandle(name)).getFile().then((f) => f.slice(0, 16).text());
+      if (head.replace(/^\uFEFF/, '').trimStart().startsWith('#ARB')) return name;
+    } catch { /* skip unreadable */ }
+  }
+  return null;
+}
+
+// Read the scene's config file → { name, text }; name is null when the scene has none yet.
+async function readPresetFile(bank, cell) {
+  const dir = await tryDir(rootHandle, sceneDirRel(bank, cell));
+  const name = await findPresetName(dir);
+  if (!name) return { name: null, text: null };
+  try { const f = await dir.getFileHandle(name).then((h) => h.getFile()); return { name, text: await f.text() }; }
+  catch { return { name: null, text: null }; }
 }
 let presetTemplate = null;
 async function loadPresetTemplate() {
@@ -695,9 +718,10 @@ async function renderPreset() {
   const panel = $('#preset-panel');
   panel.innerHTML = '<p class="preset-loading">Loading preset…</p>';
   const bank = state.sceneBank, cell = state.sceneCell;
-  let text = await readPresetText(bank, cell);
-  const exists = text != null;
-  if (!exists) text = await loadPresetTemplate();
+  const { name: cfgName, text: existingText } = await readPresetFile(bank, cell);
+  const exists = existingText != null;
+  const fileName = cfgName || 'preset.txt';           // create preset.txt when the scene has none
+  const text = exists ? existingText : await loadPresetTemplate();
   // The user may have moved to another scene / sub-tab while we were reading.
   if (state.sceneBank !== bank || state.sceneCell !== cell || state.sceneTab !== 'preset') return;
 
@@ -705,8 +729,8 @@ async function renderPreset() {
   const head = document.createElement('div');
   head.className = 'preset-head';
   head.innerHTML = exists
-    ? '<span class="preset-status good">⬥ preset.txt present — edited in place, other parameters preserved</span>'
-    : '<span class="preset-status">no preset.txt yet — Create will write one from the arbhar template</span>';
+    ? `<span class="preset-status good">⬥ ${escapeHtml(fileName)} present — edited in place, other parameters preserved</span>`
+    : '<span class="preset-status">no config file yet — Create will write preset.txt from the arbhar template</span>';
   panel.appendChild(head);
 
   // Straight from the manual: parameters only take effect if Load configuration = Load scene.
@@ -760,9 +784,9 @@ async function renderPreset() {
       else if (v !== '') out = presetSet(out, f.key, v);
     }
     try {
-      await writeBytes('root', scenePresetRel(bank, cell), new TextEncoder().encode(out));
+      await writeBytes('root', `${sceneDirRel(bank, cell)}/${fileName}`, new TextEncoder().encode(out));
       await loadGrid();                 // refresh hasPreset dot + re-render the panel from disk
-      toast(exists ? 'Preset saved ✓' : 'Preset created ✓');
+      toast(exists ? `${fileName} saved ✓` : 'Preset created ✓');
     } catch (e) { toast(e.message, true); }
   };
 }

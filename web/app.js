@@ -1559,7 +1559,13 @@ async function setEditor(rel, name, scope = 'root') {
   $('#insp-sub').textContent = prettyName(name);
   try {
     const file = scope === 'reserve' ? await fileByReservePath(rel) : await fileByRootRel(rel);
-    const buf = await audioCtx().decodeAudioData(await file.arrayBuffer());
+    const bytes = await file.arrayBuffer();
+    // Decode at the file's own sample rate so an edited sample keeps it (decodeAudioData
+    // otherwise resamples to the output device's rate — e.g. a 48k file → 44.1k on some Macs).
+    const info = wavInfo(bytes.slice(0, 8192));
+    const srcRate = info && info.sampleRate >= 8000 && info.sampleRate <= 96000 ? info.sampleRate : 0;
+    let ctx; try { ctx = srcRate ? new OfflineAudioContext(1, 1, srcRate) : audioCtx(); } catch { ctx = audioCtx(); }
+    const buf = await ctx.decodeAudioData(bytes);
     if (seq !== editor.seq) return;                   // a newer selection superseded this one
     editor.buf = buf; editor.peaks = null;
   } catch (e) { if (seq === editor.seq) { editor.buf = null; toast('Audio decoding failed.', true); } }

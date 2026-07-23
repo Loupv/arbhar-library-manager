@@ -1672,7 +1672,9 @@ function drawWave() {
     ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke(); ctx.lineWidth = 1;
   }
-  $('#edit-info').innerHTML = `durée <b>${fmtDur(editor.buf.duration)}</b> · sélection <b>${fmtDur(dur)}</b> · ${editor.buf.sampleRate / 1000}k · ${editor.buf.numberOfChannels === 2 ? 'stéréo' : 'mono'}`;
+  const over = dur > 13.05;   // arbhar layer buffer holds max 13 s; longer is truncated on load
+  $('#edit-info').innerHTML = `durée <b>${fmtDur(editor.buf.duration)}</b> · sélection <b>${fmtDur(dur)}</b> · ${editor.buf.sampleRate / 1000}k · ${editor.buf.numberOfChannels === 2 ? 'stéréo' : 'mono'}`
+    + (over ? ' · <span class="edit-warn">⚠ over 13 s — the module loads only the first 13 s; trim to fit</span>' : '');
 }
 
 // Animate the playhead while the editor's file plays.

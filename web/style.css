@@ -300,6 +300,7 @@ html, body {
   background: var(--bg); border: 1px solid var(--line-soft); cursor: pointer; touch-action: none;
 }
 .edit-info { font-size: 11px; color: var(--muted); margin: 8px 2px; font-variant-numeric: tabular-nums; }
+.edit-warn { color: var(--danger); }
 .edit-info b { color: var(--gold-br); font-weight: 500; }
 .edit-tools { display: flex; flex-direction: column; gap: 9px; }
 .edit-row { display: flex; align-items: center; gap: 10px; }

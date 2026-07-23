@@ -709,6 +709,12 @@ async function renderPreset() {
     : '<span class="preset-status">no preset.txt yet — Create will write one from the arbhar template</span>';
   panel.appendChild(head);
 
+  // Straight from the manual: parameters only take effect if Load configuration = Load scene.
+  const note = document.createElement('p');
+  note.className = 'preset-loadhint';
+  note.innerHTML = 'For the module to apply these parameters, set <b>Load configuration</b> to <b>Load scene</b>. Factory scenes ship as <b>Load layers</b>, which loads the audio but ignores the preset.';
+  panel.appendChild(note);
+
   const form = document.createElement('div');
   form.className = 'preset-form';
   const inputs = {};

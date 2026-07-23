@@ -769,7 +769,7 @@ async function renderPreset() {
   // Straight from the manual: parameters only take effect if Load configuration = Load scene.
   const note = document.createElement('p');
   note.className = 'preset-loadhint';
-  note.innerHTML = 'For the module to apply these parameters, set <b>Load configuration</b> to <b>Load scene</b>. Factory scenes ship as <b>Load layers</b>, which loads the audio but ignores the preset.';
+  note.innerHTML = 'For the module to apply these parameters, set <b>Load configuration</b> to <b>Load scene</b> (preset + audio) or <b>Load preset</b> (preset only). Factory scenes ship as <b>Load layers</b>, which loads the audio but ignores the preset.';
   panel.appendChild(note);
 
   const form = document.createElement('div');

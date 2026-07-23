@@ -11,9 +11,9 @@
   --line-soft: rgba(255, 255, 255, 0.06);
   --gold:      #c9a15b;
   --gold-br:   #e2c489;
-  --gold-dim:  rgba(201, 161, 91, 0.5);
-  --text:      #ede7db;
-  --muted:     #8c8474;
+  --gold-dim:  rgba(214, 178, 112, 0.66);
+  --text:      #f3eee4;
+  --muted:     #ada493;
   --danger:    #c56b5c;
   --ok:        #8ba86a;
   --radius:    10px;
@@ -30,7 +30,7 @@ html, body {
     var(--bg);
   color: var(--text);
   font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
-  font-weight: 300;
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
 }
 

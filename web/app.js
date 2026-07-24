@@ -546,7 +546,7 @@ function renderGrid() {
       pad.className = 'pad' + (filled ? ' filled' : ' empty');
       if (state.selected && state.selected.bank === bank && state.selected.cell === cell) pad.classList.add('selected');
       const label = filled ? prettyName(c.files[0].name) : '— empty —';
-      const count = c.files.length > 1 ? `<span class="pad-count">+${c.files.length - 1} autres</span>` : '';
+      const count = c.files.length > 1 ? `<span class="pad-count">${c.files.length} samples</span>` : '';
       pad.innerHTML = `<span class="pad-id">${bank}.${cell}</span>
         <span class="pad-name">${escapeHtml(label)}</span>${count}`;
       pad.onclick = () => selectSlot(bank, cell);
@@ -644,7 +644,7 @@ function renderSceneView() {
         <span class="lt-actions">${f ? '<button class="mini rn" title="Rename">✎</button><button class="mini del" title="Delete">✕</button>' : ''}</span>
       </div>
       <div class="lt-name">${f ? escapeHtml(prettyName(f.name)) : '— empty —'}</div>
-      <div class="lt-meta">${f ? (info ? info + ' · ' : '') + fmtSize(f.size) : 'glisse un .wav ici'}</div>`;
+      <div class="lt-meta">${f ? (info ? info + ' · ' : '') + fmtSize(f.size) : 'drop a .wav here'}</div>`;
     tile.onclick = () => selectLayer(L);
     if (f) {
       tile.querySelector('.rn').onclick = (e) => { e.stopPropagation(); startRename(tile, f, state.sceneBank, state.sceneCell); };
@@ -1058,7 +1058,7 @@ function fileRow(f, bank, cell, ctx = {}) {
   li.className = 'file-row' + (loads ? '' : ' ignored');
   li.draggable = true;
   const relPath = slotRel(bank, cell) + '/' + f.name;
-  const info = f.info ? `${(f.info.sampleRate / 1000).toFixed(f.info.sampleRate % 1000 ? 1 : 0)}k · ${f.info.bits}bit · ${f.info.channels === 2 ? 'stéréo' : 'mono'}` : '';
+  const info = f.info ? `${(f.info.sampleRate / 1000).toFixed(f.info.sampleRate % 1000 ? 1 : 0)}k · ${f.info.bits}bit · ${f.info.channels === 2 ? 'stereo' : 'mono'}` : '';
   const ideal = f.info && f.info.sampleRate === 48000 && f.info.bits === 24;
   const multi = count > 1;
   const durTxt = dur != null ? `${dur.toFixed(1)} s · ` : '';
@@ -1767,7 +1767,7 @@ function drawWave() {
     ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke(); ctx.lineWidth = 1;
   }
   const over = dur > 13.05;   // arbhar layer buffer holds max 13 s; longer is truncated on load
-  $('#edit-info').innerHTML = `durée <b>${fmtDur(editor.buf.duration)}</b> · sélection <b>${fmtDur(dur)}</b> · ${editor.buf.sampleRate / 1000}k · ${editor.buf.numberOfChannels === 2 ? 'stéréo' : 'mono'}`
+  $('#edit-info').innerHTML = `length <b>${fmtDur(editor.buf.duration)}</b> · selection <b>${fmtDur(dur)}</b> · ${editor.buf.sampleRate / 1000}k · ${editor.buf.numberOfChannels === 2 ? 'stereo' : 'mono'}`
     + (over ? '<span class="edit-warn">⚠ over 13s</span>' : '');
 }
 

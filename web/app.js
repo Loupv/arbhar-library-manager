@@ -1198,8 +1198,12 @@ async function deleteFile(f, bank, cell) {
     const r = await api.post('/api/delete', { kind: state.kind, lib: state.lib, bank, cell, name: f.name });
     stopIfPlaying(slotRel(bank, cell) + '/' + f.name);
     await loadGrid();
-    if (state.kind !== 'scene') renderInspector();
-    if (editor.name === f.name) clearEditor();
+    if (state.kind === 'scene') {
+      if (editor.name === f.name) clearEditor();
+    } else {
+      // Rebuild the slot's editor view (combined / solo / empty) so the waveform reflects the delete.
+      selectSlot(bank, cell, { play: false });
+    }
     toast('Removed to trash.', false, () => undoRestore(r.restore));
   } catch (e) { toast(e.message, true); }
 }

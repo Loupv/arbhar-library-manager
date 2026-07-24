@@ -1447,7 +1447,7 @@ async function uploadFiles(fileList, destQuery) {
   const q = Object.fromEntries(new URLSearchParams(destQuery));
   let ok = 0, aif = 0;
   for (const file of [...fileList]) {
-    if (!AUDIO_RE.test(file.name)) { toast(`Skipped ${file.name} (not .wav/.aif).`, true); continue; }
+    if (!AUDIO_RE.test(file.name)) { toast(`“${file.name}” skipped — the arbhar only reads WAV and AIFF files.`, true); continue; }
     if (isAif(file.name)) aif++;
     try {
       const ext = extOf(file.name), stem = cleanStem(file.name.replace(/^\d+_/, '').replace(/\.[^.]+$/, ''));

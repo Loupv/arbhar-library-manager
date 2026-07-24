@@ -1000,19 +1000,27 @@ async function clearSlotWithUndo(bank, cell) {
 // Select a slot (shared by click + keyboard) and audition its first sample.
 function selectSlot(bank, cell, { play = true } = {}) {
   const cc = cellAt(bank, cell);
+  const multi = !!(cc && cc.files.length > 1);
   const relFirst = cc && cc.files.length ? slotRel(bank, cell) + '/' + cc.files[0].name : null;
-  // Re-clicking the tile that is already playing pauses it (and vice-versa).
-  if (play && relFirst && toggledCurrent('/api/audio?path=' + encodeURIComponent(relFirst))) return;
+  // Re-clicking the tile that is already playing pauses it (combined key for a stack, file key for one).
+  if (play) {
+    const key = multi ? 'combined:' + slotRel(bank, cell) : '/api/audio?path=' + encodeURIComponent(relFirst);
+    if (relFirst && toggledCurrent(key)) return;
+  }
   state.selected = { bank, cell };
   renderGrid();
   renderInspector();
   const sel = $('#grid .pad.selected');
   if (sel) sel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   if (cc && cc.files.length) {
-    const first = cc.files[0];
-    const rel = slotRel(bank, cell) + '/' + first.name;
-    if (play) playAudio('/api/audio?path=' + encodeURIComponent(rel), prettyName(first.name), $('#insp-list .file-row'));
-    setEditor(rel, first.name);
+    if (multi) {
+      setEditorCombined(bank, cell, cc.files, play);   // combined preview + chained playback
+    } else {
+      const first = cc.files[0];
+      const rel = slotRel(bank, cell) + '/' + first.name;
+      if (play) playAudio('/api/audio?path=' + encodeURIComponent(rel), prettyName(first.name), $('#insp-list .file-row'));
+      setEditor(rel, first.name);
+    }
   } else {
     clearEditor();
   }
@@ -1680,7 +1688,7 @@ $('.pl-track').onclick = (e) => {
 function fmtTime(s) { s = Math.floor(s || 0); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 
 /* ===================== SAMPLE EDITOR (waveform · trim · fades) ===================== */
-const editor = { rel: null, name: null, buf: null, sel: { start: 0, end: 1 }, fadeIn: 0, fadeOut: 0, ac: null, previewSrc: null, drag: null, normalize: false, normDb: parseFloat(localStorage.getItem('arbhar-norm-db') || '-1') };
+const editor = { rel: null, name: null, buf: null, combined: null, sel: { start: 0, end: 1 }, fadeIn: 0, fadeOut: 0, ac: null, previewSrc: null, drag: null, normalize: false, normDb: parseFloat(localStorage.getItem('arbhar-norm-db') || '-1') };
 
 // Peak-normalize gain to reach the target dBFS over the current selection.
 function normGain() {
@@ -1706,7 +1714,8 @@ function fmtDur(s) { return (s || 0).toFixed(2) + ' s'; }
 async function setEditor(rel, name, scope = 'root') {
   const seq = (editor.seq = (editor.seq || 0) + 1);   // guards against out-of-order decodes
   editor.rel = rel; editor.name = name; editor.scope = scope;
-  editor.buf = null; editor.peaks = null;             // clear now: no stale waveform while decoding
+  editor.buf = null; editor.peaks = null; editor.combined = null;   // single-file (editable) mode
+  $('#edit-tools').classList.remove('hidden');
   editor.sel = { start: 0, end: 1 }; editor.fadeIn = 0; editor.fadeOut = 0; editor.normalize = false;
   $('#fade-in').value = 0; $('#fade-out').value = 0;
   $('#fade-in-val').textContent = '0 ms'; $('#fade-out-val').textContent = '0 ms';
@@ -1731,9 +1740,68 @@ async function setEditor(rel, name, scope = 'root') {
   if (editor.buf && !playheadRAF && audio && !audio.paused) playheadRAF = requestAnimationFrame(tickPlayhead);
 }
 function clearEditor() {
-  editor.rel = null; editor.buf = null;
+  editor.rel = null; editor.buf = null; editor.combined = null;
+  $('#edit-tools').classList.remove('hidden');
   $('#editor').classList.add('hidden');
   $('#insp-sub').textContent = '';
+}
+
+// Combined (preview-only) view of a multi-file slot: decode all files at 48k, join them,
+// draw one waveform with file separators + the 10s/13s load cutoff, and play the whole stack.
+async function setEditorCombined(bank, cell, files, play = true) {
+  const seq = (editor.seq = (editor.seq || 0) + 1);
+  editor.rel = null; editor.scope = 'root'; editor.name = `${bank}.${cell} combined`;
+  editor.buf = null; editor.peaks = null; editor.combined = null;
+  editor.sel = { start: 0, end: 1 };
+  $('#editor').classList.remove('hidden');
+  $('#insp-empty').classList.add('hidden');
+  $('#edit-tools').classList.add('hidden');          // no editing on the combined view
+  $('#insp-sub').textContent = `${files.length} samples · combined preview`;
+
+  const rate = 48000, decoded = [];
+  for (const f of files) {
+    try { decoded.push(await new OfflineAudioContext(1, 1, rate).decodeAudioData(await (await fileByRootRel(slotRel(bank, cell) + '/' + f.name)).arrayBuffer())); }
+    catch { decoded.push(null); }
+  }
+  if (seq !== editor.seq) return;
+  const valid = decoded.filter(Boolean);
+  if (!valid.length) { editor.buf = null; drawWave(); return; }
+  const numCh = Math.max(1, ...valid.map((b) => b.numberOfChannels));
+  const totalFrames = valid.reduce((s, b) => s + b.length, 0);
+  const out = audioCtx().createBuffer(numCh, totalFrames, rate);
+  const boundaries = []; let off = 0, running = 0, loadedEnd = 0, loadedCount = 0, done = false;
+  for (const b of decoded) {
+    if (b) {
+      for (let c = 0; c < numCh; c++) out.getChannelData(c).set(b.getChannelData(Math.min(c, b.numberOfChannels - 1)), off);
+      off += b.length;
+      const dur = b.length / rate;
+      if (!done && running < 10) { loadedEnd += dur; running += dur; loadedCount++; } else done = true;
+    }
+    boundaries.push(off / rate);
+  }
+  loadedEnd = Math.min(loadedEnd, 13);
+  editor.buf = out; editor.peaks = null;
+  editor.combined = { boundaries, loadedEnd, total: totalFrames / rate, loadedCount, count: files.length };
+
+  const chans = []; for (let c = 0; c < numCh; c++) chans.push(out.getChannelData(c));
+  const url = URL.createObjectURL(new Blob([encodeWav24(chans, rate)], { type: 'audio/wav' }));
+  playBlob(url, `${bank}.${cell} · ${files.length} samples`, 'combined:' + slotRel(bank, cell), play);
+  drawWave();
+  if (play && !playheadRAF) playheadRAF = requestAnimationFrame(tickPlayhead);
+}
+
+// Play a ready blob URL (used by the combined preview). Mirrors playAudio but skips URL resolution.
+function playBlob(url, name, srcKey, play = true) {
+  if (currentRow) currentRow.classList.remove('playing');
+  currentRow = null;
+  if (lastAudioURL) { URL.revokeObjectURL(lastAudioURL); }
+  lastAudioURL = url;                                // revoked on the next play
+  currentSrcKey = srcKey; playingStagingPath = null;
+  $('#pl-name').textContent = name;
+  $('#pl-toggle').disabled = false;
+  audio.src = url;
+  if (play) { $('#pl-toggle').textContent = '❚❚'; audio.play().catch(() => {}); }
+  else { $('#pl-toggle').textContent = '▶'; }
 }
 function selDuration() { return editor.buf ? (editor.sel.end - editor.sel.start) * editor.buf.duration : 0; }
 
@@ -1772,36 +1840,63 @@ function drawWave() {
     ctx.lineTo(x + 0.5, mid - mn * mid * 0.9);
   }
   ctx.stroke();
-  const sx = editor.sel.start * W, ex = editor.sel.end * W;
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.fillRect(0, 0, sx, H); ctx.fillRect(ex, 0, W - ex, H);
-  const selW = ex - sx, dur = selDuration();
-  const fi = dur > 0 ? Math.min(1, (editor.fadeIn / 1000) / dur) : 0;
-  const fo = dur > 0 ? Math.min(1, (editor.fadeOut / 1000) / dur) : 0;
-  ctx.strokeStyle = 'rgba(226,196,137,0.7)';
-  ctx.beginPath();
-  ctx.moveTo(sx, H); ctx.lineTo(sx + selW * fi, 0);
-  ctx.moveTo(ex, H); ctx.lineTo(ex - selW * fo, 0);
-  ctx.stroke();
-  // discrete trim handles: a faint boundary line + a small grab pill at mid-height
-  for (const bx of [sx, ex]) {
+
+  if (editor.combined) {
+    // Combined preview: file separators + grey what the module drops (past the 10s/13s cutoff).
+    const C = editor.combined, total = editor.buf.duration || C.total;
+    if (C.loadedEnd < total - 1e-3) {
+      const gx = (C.loadedEnd / total) * W;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(gx, 0, W - gx, H);
+      ctx.strokeStyle = 'rgba(197,107,92,0.85)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+    }
     ctx.strokeStyle = 'rgba(226,196,137,0.35)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(bx, 0); ctx.lineTo(bx, H); ctx.stroke();
-    const hw = 7, hh = 26;
-    ctx.fillStyle = '#e2c489';
+    for (let i = 0; i < C.boundaries.length - 1; i++) {
+      const bxx = (C.boundaries[i] / total) * W;
+      ctx.beginPath(); ctx.moveTo(bxx, 0); ctx.lineTo(bxx, H); ctx.stroke();
+    }
+  } else {
+    const sx = editor.sel.start * W, ex = editor.sel.end * W;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, sx, H); ctx.fillRect(ex, 0, W - ex, H);
+    const selW = ex - sx, dur = selDuration();
+    const fi = dur > 0 ? Math.min(1, (editor.fadeIn / 1000) / dur) : 0;
+    const fo = dur > 0 ? Math.min(1, (editor.fadeOut / 1000) / dur) : 0;
+    ctx.strokeStyle = 'rgba(226,196,137,0.7)';
     ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(bx - hw / 2, mid - hh / 2, hw, hh, 3.5);
-    else ctx.rect(bx - hw / 2, mid - hh / 2, hw, hh);
-    ctx.fill();
+    ctx.moveTo(sx, H); ctx.lineTo(sx + selW * fi, 0);
+    ctx.moveTo(ex, H); ctx.lineTo(ex - selW * fo, 0);
+    ctx.stroke();
+    // discrete trim handles: a faint boundary line + a small grab pill at mid-height
+    for (const bx of [sx, ex]) {
+      ctx.strokeStyle = 'rgba(226,196,137,0.35)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(bx, 0); ctx.lineTo(bx, H); ctx.stroke();
+      const hw = 7, hh = 26;
+      ctx.fillStyle = '#e2c489';
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(bx - hw / 2, mid - hh / 2, hw, hh, 3.5);
+      else ctx.rect(bx - hw / 2, mid - hh / 2, hw, hh);
+      ctx.fill();
+    }
   }
+
   if (editorIsPlaying()) {                       // scrolling playhead
     const px = (audio.currentTime / audio.duration) * W;
     ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke(); ctx.lineWidth = 1;
   }
-  const over = dur > 13.05;   // arbhar layer buffer holds max 13 s; longer is truncated on load
-  $('#edit-info').innerHTML = `length <b>${fmtDur(editor.buf.duration)}</b> · selection <b>${fmtDur(dur)}</b> · ${editor.buf.sampleRate / 1000}k · ${editor.buf.numberOfChannels === 2 ? 'stereo' : 'mono'}`
-    + (over ? '<span class="edit-warn">⚠ over 13s</span>' : '');
+
+  if (editor.combined) {
+    const C = editor.combined;
+    const ignored = C.count - C.loadedCount;
+    $('#edit-info').innerHTML = `combined <b>${fmtDur(editor.buf.duration)}</b> · loads first <b>${C.loadedCount}/${C.count}</b> (~${fmtDur(C.loadedEnd)}, 13s buffer)`
+      + (ignored ? `<span class="edit-warn">${ignored} past the limit</span>` : '');
+  } else {
+    const dur = selDuration();
+    const over = dur > 13.05;   // arbhar layer buffer holds max 13 s; longer is truncated on load
+    $('#edit-info').innerHTML = `length <b>${fmtDur(editor.buf.duration)}</b> · selection <b>${fmtDur(dur)}</b> · ${editor.buf.sampleRate / 1000}k · ${editor.buf.numberOfChannels === 2 ? 'stereo' : 'mono'}`
+      + (over ? '<span class="edit-warn">⚠ over 13s</span>' : '');
+  }
 }
 
 // Animate the playhead while the editor's file plays.
@@ -1825,6 +1920,9 @@ async function seekEditor(f) {
   const t = f * editor.buf.duration;
   if (editorIsPlaying()) {
     audio.currentTime = t; audio.play().catch(() => {});
+  } else if (editor.combined) {
+    // The combined blob is already loaded in the player; just seek + play.
+    if (audio.src) { try { audio.currentTime = t; } catch (e) { /* */ } audio.play().catch(() => {}); $('#pl-toggle').textContent = '❚❚'; }
   } else {
     await playAudio(editorSrc(), prettyName(editor.name), null);
     if (editor.scope === 'reserve') playingStagingPath = editor.rel;
@@ -1948,7 +2046,9 @@ async function applyEdit() {
   };
   canvas.addEventListener('pointerdown', (e) => {
     if (!editor.buf) return;
-    const W = canvas.clientWidth || 280, f = frac(e);
+    const f = frac(e);
+    if (editor.combined) { seekEditor(f); return; }   // no trim handles in the combined preview
+    const W = canvas.clientWidth || 280;
     const dStart = Math.abs(f - editor.sel.start) * W, dEnd = Math.abs(f - editor.sel.end) * W;
     if (dStart <= 10 || dEnd <= 10) {          // near a handle → drag the trim handle
       editor.drag = dStart <= dEnd ? 'start' : 'end';

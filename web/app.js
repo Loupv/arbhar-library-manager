@@ -1424,8 +1424,12 @@ function wireFolderDrop(el, folderRel, hl) {
     }
     if (e.dataTransfer.items && e.dataTransfer.items.length) {
       e.preventDefault(); e.stopPropagation();
-      const n = await importDropped(e.dataTransfer, folderRel);
-      if (n) { state.expanded.add(folderRel); toast(`${n} file(s) imported.`); loadStaging(); }
+      const r = await importDropped(e.dataTransfer, folderRel);
+      if (r.ok) { state.expanded.add(folderRel); loadStaging(); }
+      const parts = [];
+      if (r.ok) parts.push(`${r.ok} imported`);
+      if (r.skipped) parts.push(`${r.skipped} skipped (WAV/AIFF only)`);
+      if (parts.length) toast(parts.join(' · '), !!r.skipped);
     }
   });
 }
@@ -1439,6 +1443,8 @@ const AUDIO_RE = /\.(wav|aif|aiff)$/i;
 // AIFF is accepted and managed (copy/move/rename), but browsers can't decode or play it,
 // so it can't be auditioned or edited here. Such files are shown greyed and flagged.
 const isAif = (name) => /\.aiff?$/i.test(name || '');
+// Audio files in formats the arbhar can't read (worth flagging when skipped on import).
+const UNSUPPORTED_AUDIO_RE = /\.(mp3|flac|ogg|oga|m4a|mp4|aac|wma|opus|alac|wv|caf)$/i;
 
 // External files (from the OS) → write into the chosen folders via FSA.
 // destQuery mirrors the old server params: dest=staging&path=… OR
@@ -1497,13 +1503,16 @@ async function importDropped(dt, basePath) {
   const collected = [];
   if (entries.length) { for (const en of entries) await walkEntry(en, '', collected); }
   else { for (const f of [...(dt.files || [])]) collected.push({ file: f, dir: '' }); }
-  let ok = 0;
+  let ok = 0, skipped = 0;
   for (const { file, dir } of collected) {
-    if (!AUDIO_RE.test(file.name)) continue;                 // skip non-audio silently
+    if (!AUDIO_RE.test(file.name)) {                         // not WAV/AIFF
+      if (UNSUPPORTED_AUDIO_RE.test(file.name)) skipped++;   // flag audio we can't use (ignore junk/dotfiles)
+      continue;
+    }
     const target = dir ? (basePath ? basePath + '/' + dir : dir) : basePath;
-    ok += await uploadFiles([file], 'dest=staging&path=' + encodeURIComponent(target));
+    ok += (await uploadFiles([file], 'dest=staging&path=' + encodeURIComponent(target))) || 0;
   }
-  return ok;
+  return { ok, skipped };
 }
 
 // Drop onto a grid pad (library) → REPLACE the slot with the dropped sample.
@@ -1617,8 +1626,11 @@ reservePanel.addEventListener('drop', async (e) => {
   }
   if (!e.dataTransfer.items || !e.dataTransfer.items.length) return;
   e.preventDefault();
-  const n = await importDropped(e.dataTransfer, '');
-  if (n) toast(`${n} file(s) added to the reserve.`);
+  const r = await importDropped(e.dataTransfer, '');
+  const parts = [];
+  if (r.ok) parts.push(`${r.ok} added to the reserve`);
+  if (r.skipped) parts.push(`${r.skipped} skipped (WAV/AIFF only)`);
+  if (parts.length) toast(parts.join(' · '), !!r.skipped);
   loadStaging();
 });
 

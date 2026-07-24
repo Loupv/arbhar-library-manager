@@ -32,7 +32,9 @@ The browser opens at `http://localhost:4173` (change with `PORT=5000 npm start`)
 On macOS you can also double-click `arbhar-library-editor.command`.
 
 ### License
-[MIT](LICENSE) © Loup Vuarnesson.
+[GNU AGPL-3.0](LICENSE) © 2026 Loup Vuarnesson. Free software: you may use, study,
+share and modify it, but any distributed or network-hosted version must keep the
+same license and make its source available. See [NOTICE](NOTICE).
 
 ---
 

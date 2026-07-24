@@ -177,7 +177,8 @@ html, body {
 .row-line .mini.x:hover, .stage-item .mini.x:hover { color: var(--danger); }
 /* Empty reserve → the dropzone fills all remaining height. */
 .stage-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.file-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.file-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-height: 44px; border-radius: 8px; }
+.file-list.list-drop-over { outline: 1.5px dashed var(--gold); outline-offset: 4px; background: rgba(201,161,91,0.06); }
 .stage-item {
   display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 7px;
   background: var(--panel); border: 1px solid var(--line-soft); cursor: pointer; font-size: 13px;

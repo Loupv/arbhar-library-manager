@@ -2064,6 +2064,36 @@ async function applyEdit() {
   canvas.addEventListener('pointermove', (e) => { if (editor.drag) move(frac(e)); });
   canvas.addEventListener('pointerup', () => { editor.drag = null; });
 })();
+
+// Drop a reserve sample (or Finder files) onto the editor's file list → add to the selected slot.
+(function initInspectorListDrop() {
+  const list = $('#insp-list');
+  const canAdd = (dt) => state.kind !== 'scene' && state.selected && (dt.types.includes('application/x-arbhar-staging') || dt.types.includes('Files'));
+  list.addEventListener('dragover', (e) => { if (!canAdd(e.dataTransfer)) return; e.preventDefault(); list.classList.add('list-drop-over'); });
+  list.addEventListener('dragleave', (e) => { if (!list.contains(e.relatedTarget)) list.classList.remove('list-drop-over'); });
+  list.addEventListener('drop', async (e) => {
+    list.classList.remove('list-drop-over');
+    if (state.kind === 'scene' || !state.selected) return;
+    const { bank, cell } = state.selected;
+    const stg = e.dataTransfer.getData('application/x-arbhar-staging');
+    if (stg) {
+      e.preventDefault(); e.stopPropagation();
+      const item = JSON.parse(stg);
+      if (item.isDir) { toast('Drop a sample, not a folder.', true); return; }
+      try {
+        await api.post('/api/copy-from-staging', { path: item.path, kind: state.kind, lib: state.lib, bank, cell });
+        await loadGrid(); selectSlot(bank, cell, { play: false });
+        toast(`Slot ${bank}.${cell} ← “${item.name}” added.`);
+      } catch (err) { toast(err.message, true); }
+      return;
+    }
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      e.preventDefault(); e.stopPropagation();
+      const n = await uploadFiles(e.dataTransfer.files, `dest=slot&kind=${state.kind}&lib=${state.lib}&bank=${bank}&cell=${cell}`);
+      if (n) { await loadGrid(); selectSlot(bank, cell, { play: false }); toast(`Slot ${bank}.${cell} · ${n} sample${n > 1 ? 's' : ''} added.`); }
+    }
+  });
+})();
 $('#normalize').addEventListener('change', (e) => { editor.normalize = e.target.checked; drawWave(); });
 $('#norm-db').addEventListener('input', (e) => {
   let v = parseFloat(e.target.value); if (isNaN(v)) return;

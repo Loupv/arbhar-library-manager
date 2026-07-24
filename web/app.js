@@ -1053,7 +1053,7 @@ function renderInspector() {
       + (ignored ? `<span class="slot-stack-warn">${ignored} ignored (past 10 s)</span>` : '');
     list.appendChild(head);
   }
-  rows.forEach((r, i) => list.appendChild(fileRow(r.f, bank, cell, { index: i, count: rows.length, loads: r.loads, dur: r.dur })));
+  rows.forEach((r) => list.appendChild(fileRow(r.f, bank, cell, { count: rows.length, loads: r.loads, dur: r.dur })));
   if (!c.files.length) {
     const p = document.createElement('p');
     p.className = 'empty-note'; p.style.marginTop = '20px';
@@ -1063,7 +1063,7 @@ function renderInspector() {
 }
 
 function fileRow(f, bank, cell, ctx = {}) {
-  const { index = 0, count = 1, loads = true, dur = null } = ctx;
+  const { count = 1, loads = true, dur = null } = ctx;
   const li = document.createElement('li');
   li.className = 'file-row' + (loads ? '' : ' ignored');
   li.draggable = true;
@@ -1072,8 +1072,7 @@ function fileRow(f, bank, cell, ctx = {}) {
   const ideal = f.info && f.info.sampleRate === 48000 && f.info.bits === 24;
   const multi = count > 1;
   const durTxt = dur != null ? `${dur.toFixed(1)} s · ` : '';
-  li.innerHTML = `${multi ? `<span class="reorder"><button class="mini up" title="Move up" ${index === 0 ? 'disabled' : ''}>▲</button><button class="mini down" title="Move down" ${index === count - 1 ? 'disabled' : ''}>▼</button></span>` : ''}
-    <span class="play">▶</span>
+  li.innerHTML = `<span class="play">▶</span>
     <div class="file-main">
       <div class="file-name">${escapeHtml(prettyName(f.name))}${loads || !multi ? '' : ' <span class="ignored-tag">ignored (past 10 s)</span>'}</div>
       <div class="file-meta">
@@ -1088,10 +1087,6 @@ function fileRow(f, bank, cell, ctx = {}) {
   li.querySelector('.file-main').onclick = () => { playAudio('/api/audio?path=' + encodeURIComponent(relPath), prettyName(f.name), li); setEditor(relPath, f.name); };
   li.querySelector('.rn').onclick = (e) => { e.stopPropagation(); startRename(li, f, bank, cell); };
   li.querySelector('.del').onclick = (e) => { e.stopPropagation(); deleteFile(f, bank, cell); };
-  if (multi) {
-    li.querySelector('.up').onclick = (e) => { e.stopPropagation(); moveInSlot(bank, cell, f.name, -1); };
-    li.querySelector('.down').onclick = (e) => { e.stopPropagation(); moveInSlot(bank, cell, f.name, 1); };
-  }
 
   li.addEventListener('dragstart', (e) => {
     e.dataTransfer.setData('application/x-arbhar-file', JSON.stringify({ path: relPath, name: f.name, slotFile: { bank, cell, name: f.name } }));
@@ -1149,15 +1144,6 @@ async function commitSlotOrder(bank, cell, order) {
     await loadGrid();
     selectSlot(bank, cell, { play: false });
   } catch (e) { toast(e.message, true); }
-}
-// Move a file one step up/down (arrow buttons).
-async function moveInSlot(bank, cell, name, delta) {
-  const c = cellAt(bank, cell); if (!c) return;
-  const order = c.files.map((f) => f.name);
-  const i = order.indexOf(name), j = i + delta;
-  if (i < 0 || j < 0 || j >= order.length) return;
-  [order[i], order[j]] = [order[j], order[i]];
-  await commitSlotOrder(bank, cell, order);
 }
 // Drop file `fromName` at `toName`'s position (drag-to-reorder within a slot).
 async function dropReorderSlot(bank, cell, fromName, toName) {

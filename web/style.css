@@ -356,6 +356,7 @@ input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 4
 .inspector { border-left: 1px solid var(--line-soft); padding: 18px; overflow-y: auto; background: var(--bg-2); }
 .empty-note { color: var(--muted); font-size: 13px; text-align: center; margin-top: 40px; }
 .file-row {
+  position: relative;
   display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 8px;
   background: var(--panel); border: 1px solid var(--line-soft); cursor: grab;
   user-select: none; -webkit-user-select: none;
@@ -363,8 +364,14 @@ input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 4
 .file-row:hover { border-color: var(--gold-dim); }
 .file-row.playing { border-color: var(--gold); }
 .file-row.reorder-over { border-color: var(--gold-br); box-shadow: inset 0 2px 0 var(--gold-br); }
-.file-row.insert-before { box-shadow: inset 0 3px 0 var(--gold-br); }
-.file-row.insert-after { box-shadow: inset 0 -3px 0 var(--gold-br); }
+/* thin insertion line floating in the gap between rows (not the block outline) */
+.file-row.insert-before::before,
+.file-row.insert-after::after {
+  content: ""; position: absolute; left: 2px; right: 2px; height: 2px;
+  background: var(--gold-br); border-radius: 1px; pointer-events: none;
+}
+.file-row.insert-before::before { top: -4px; }
+.file-row.insert-after::after { bottom: -4px; }
 .file-row .play { color: var(--gold); font-size: 12px; }
 .file-main { flex: 1; min-width: 0; }
 .file-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -379,8 +386,6 @@ input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 4
   font-size: 11px; color: var(--gold-dim); margin: 2px 2px 8px; letter-spacing: .02em;
 }
 .slot-stack-warn { color: var(--danger); }
-.file-row .reorder { display: flex; flex-direction: column; gap: 1px; }
-.file-row .reorder .mini { padding: 0 3px; font-size: 8px; line-height: 1.1; }
 .file-row.ignored { opacity: .55; }
 .file-row.ignored:hover { opacity: .8; }
 .ignored-tag { color: var(--danger); font-size: 9px; margin-left: 6px; letter-spacing: .02em; }

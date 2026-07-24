@@ -446,7 +446,7 @@ function enterApp() {
   const name = rootHandle ? rootHandle.name : '';
   state.root = name;
   $('#root-path').textContent = name;
-  $('#root-path').title = name;
+  $('#root-path').title = 'Selected library folder: ' + name + '\n(browsers show the folder/volume name only, not the full path)';
   buildTabs();
   loadStaging();
   selectTab('library', 1);
@@ -1086,9 +1086,26 @@ function fileRow(f, bank, cell, ctx = {}) {
   }
 
   li.addEventListener('dragstart', (e) => {
-    e.dataTransfer.setData('application/x-arbhar-file', JSON.stringify({ path: relPath, name: f.name }));
-    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('application/x-arbhar-file', JSON.stringify({ path: relPath, name: f.name, slotFile: { bank, cell, name: f.name } }));
+    e.dataTransfer.effectAllowed = 'copyMove';
   });
+  // Drag another file of the SAME slot onto this row → reorder.
+  if (multi) {
+    li.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer.types.includes('application/x-arbhar-file')) return;
+      e.preventDefault(); li.classList.add('reorder-over');
+    });
+    li.addEventListener('dragleave', () => li.classList.remove('reorder-over'));
+    li.addEventListener('drop', (e) => {
+      li.classList.remove('reorder-over');
+      const d = e.dataTransfer.getData('application/x-arbhar-file');
+      if (!d) return;
+      let it; try { it = JSON.parse(d); } catch { return; }
+      if (!it.slotFile || it.slotFile.bank !== bank || it.slotFile.cell !== cell || it.slotFile.name === f.name) return;
+      e.preventDefault(); e.stopPropagation();
+      dropReorderSlot(bank, cell, it.slotFile.name, f.name);
+    });
+  }
   return li;
 }
 
@@ -1117,18 +1134,32 @@ function slotLoadRows(files) {
 }
 
 // Move a file up/down within its slot (rewrites the N_ prefixes) and reselect the slot.
-async function moveInSlot(bank, cell, name, delta) {
-  const c = cellAt(bank, cell); if (!c) return;
-  const order = c.files.map((f) => f.name);
-  const i = order.indexOf(name), j = i + delta;
-  if (i < 0 || j < 0 || j >= order.length) return;
-  [order[i], order[j]] = [order[j], order[i]];
+async function commitSlotOrder(bank, cell, order) {
   try {
     await api.post('/api/reorder-slot', { kind: state.kind, lib: state.lib, bank, cell, order });
     stopPlayback();                          // prefixes changed → old playing/editor refs are stale
     await loadGrid();
     selectSlot(bank, cell, { play: false });
   } catch (e) { toast(e.message, true); }
+}
+// Move a file one step up/down (arrow buttons).
+async function moveInSlot(bank, cell, name, delta) {
+  const c = cellAt(bank, cell); if (!c) return;
+  const order = c.files.map((f) => f.name);
+  const i = order.indexOf(name), j = i + delta;
+  if (i < 0 || j < 0 || j >= order.length) return;
+  [order[i], order[j]] = [order[j], order[i]];
+  await commitSlotOrder(bank, cell, order);
+}
+// Drop file `fromName` at `toName`'s position (drag-to-reorder within a slot).
+async function dropReorderSlot(bank, cell, fromName, toName) {
+  const c = cellAt(bank, cell); if (!c) return;
+  const order = c.files.map((f) => f.name);
+  const fi = order.indexOf(fromName), ti = order.indexOf(toName);
+  if (fi < 0 || ti < 0 || fi === ti) return;
+  order.splice(fi, 1);
+  order.splice(ti, 0, fromName);
+  await commitSlotOrder(bank, cell, order);
 }
 
 function startRename(row, f, bank, cell) {

@@ -25,6 +25,8 @@ const RESERVE_TRASH = null; // web undo is in-memory (bytes kept in the restore 
 
 function extOf(name) { const i = name.lastIndexOf('.'); return i < 0 ? '' : name.slice(i); }
 function baseOf(p) { return p.slice(p.lastIndexOf('/') + 1); }
+// Strip all whitespace from a filename stem (arbhar library files use spaceless CamelCase names).
+function cleanStem(s) { return s.replace(/\s+/g, ''); }
 function slotRelPath(kind, lib, bank, cell) {
   return kind === 'scene' ? `_arbhar_scenes/${bank}_${cell}_scene`
     : `${LIB_FOLDERS[(lib || 1) - 1]}/${bank}_${cell}_sample`;
@@ -145,7 +147,7 @@ async function apiStagingList(p) {
 async function apiCopyFromStaging(b) {
   const srcFile = await fileByReservePath(b.path);
   const dir = await dirByPath(rootHandle, slotRelPath(b.kind, b.lib, b.bank, b.cell), true);
-  const stem = baseOf(b.path).replace(/^\d+_/, '').replace(/\.[^.]+$/, '');
+  const stem = cleanStem(baseOf(b.path).replace(/^\d+_/, '').replace(/\.[^.]+$/, ''));
   const ing = await ingest(await srcFile.arrayBuffer(), `${stem}${extOf(b.path)}`);
   const ext = extOf(ing.name);
   let name;
@@ -180,7 +182,7 @@ async function apiFillScene(b) {
   }
   let layer = 1;
   for (const f of files) {
-    const stem = f.name.replace(/^\d+_/, '').replace(/\.[^.]+$/, '');
+    const stem = cleanStem(f.name.replace(/^\d+_/, '').replace(/\.[^.]+$/, ''));
     const ing = await ingest(await (await srcDir.getFileHandle(f.name)).getFile().then((x) => x.arrayBuffer()), `${stem}${extOf(f.name)}`);
     const name = await uniqueName(dir, `${layer}_${stem}${extOf(ing.name)}`);
     const fh = await dir.getFileHandle(name, { create: true });
@@ -192,7 +194,7 @@ async function apiFillScene(b) {
 async function apiRename(b) {
   const dir = await dirByPath(rootHandle, slotRelPath(b.kind, b.lib, b.bank, b.cell), false);
   const ext = extOf(b.from), pref = (b.from.match(/^(\d+_)/) || ['', ''])[1];
-  const stem = String(b.to).replace(/\.[^.]+$/, '').replace(/^\d+_/, '');
+  const stem = cleanStem(String(b.to).replace(/\.[^.]+$/, '').replace(/^\d+_/, ''));
   const name = await uniqueName(dir, `${pref}${stem}${ext}`);
   const bytes = await (await dir.getFileHandle(b.from)).getFile().then((f) => f.arrayBuffer());
   const nh = await dir.getFileHandle(name, { create: true });
@@ -1337,7 +1339,7 @@ async function uploadFiles(fileList, destQuery) {
   for (const file of [...fileList]) {
     if (!AUDIO_RE.test(file.name)) { toast(`Skipped ${file.name} (not .wav/.aif).`, true); continue; }
     try {
-      const ext = extOf(file.name), stem = file.name.replace(/^\d+_/, '').replace(/\.[^.]+$/, '');
+      const ext = extOf(file.name), stem = cleanStem(file.name.replace(/^\d+_/, '').replace(/\.[^.]+$/, ''));
       if (q.dest === 'staging') {
         const dir = await dirByPath(reserveHandle, q.path || '', true);
         const name = await uniqueName(dir, file.name);

@@ -716,7 +716,7 @@ function renderSceneView() {
   for (let L = 1; L <= 6; L++) {
     const f = layerFile(cur, L);
     const tile = document.createElement('div');
-    tile.className = 'layer-tile' + (f ? '' : ' empty') + (state.sceneLayer === L ? ' selected' : '');
+    tile.className = 'layer-tile' + (f ? '' : ' empty') + (state.sceneLayer === L ? ' selected' : '') + (f && isAif(f.name) ? ' unsupported' : '');
     const info = f && f.info ? `${(f.info.sampleRate / 1000).toFixed(f.info.sampleRate % 1000 ? 1 : 0)}k · ${f.info.bits}bit` : '';
     tile.innerHTML = `
       <div class="lt-head">
@@ -1143,7 +1143,7 @@ function renderInspector() {
 function fileRow(f, bank, cell, ctx = {}) {
   const { count = 1, loads = true, dur = null } = ctx;
   const li = document.createElement('li');
-  li.className = 'file-row' + (loads ? '' : ' ignored');
+  li.className = 'file-row' + (loads ? '' : ' ignored') + (isAif(f.name) ? ' unsupported' : '');
   li.draggable = true;
   const relPath = slotRel(bank, cell) + '/' + f.name;
   const info = f.info ? `${(f.info.sampleRate / 1000).toFixed(f.info.sampleRate % 1000 ? 1 : 0)}k · ${f.info.bits}bit · ${f.info.channels === 2 ? 'stereo' : 'mono'}` : '';
@@ -1333,7 +1333,7 @@ async function renderNode(pathRel, depth, container) {
       }
     } else {
       const li = document.createElement('li');
-      li.className = 'stage-item';
+      li.className = 'stage-item' + (isAif(name) ? ' unsupported' : '');
       li.draggable = true;
       li.innerHTML = `<span class="play">▶</span><span class="nm">${escapeHtml(name)}</span>
         <button class="mini x" title="Remove">✕</button>`;
@@ -1436,15 +1436,19 @@ $('#stg-mkdir').onclick = () => {
 
 /* ===================== DRAG & DROP ===================== */
 const AUDIO_RE = /\.(wav|aif|aiff)$/i;
+// AIFF is accepted and managed (copy/move/rename), but browsers can't decode or play it,
+// so it can't be auditioned or edited here. Such files are shown greyed and flagged.
+const isAif = (name) => /\.aiff?$/i.test(name || '');
 
 // External files (from the OS) → write into the chosen folders via FSA.
 // destQuery mirrors the old server params: dest=staging&path=… OR
 // dest=slot&kind=&lib=&bank=&cell=[&layer=][&replace=1]
 async function uploadFiles(fileList, destQuery) {
   const q = Object.fromEntries(new URLSearchParams(destQuery));
-  let ok = 0;
+  let ok = 0, aif = 0;
   for (const file of [...fileList]) {
     if (!AUDIO_RE.test(file.name)) { toast(`Skipped ${file.name} (not .wav/.aif).`, true); continue; }
+    if (isAif(file.name)) aif++;
     try {
       const ext = extOf(file.name), stem = cleanStem(file.name.replace(/^\d+_/, '').replace(/\.[^.]+$/, ''));
       if (q.dest === 'staging') {
@@ -1467,6 +1471,8 @@ async function uploadFiles(fileList, destQuery) {
       ok++;
     } catch (e) { toast(e.message, true); }
   }
+  // Fire after the caller's own success toast so this notice is the one left on screen.
+  if (aif) setTimeout(() => toast('AIF files not supported yet — imported, but no preview or editing.', true), 0);
   return ok;
 }
 
@@ -1694,6 +1700,7 @@ async function resolveAudioURL(src) {
 }
 
 async function playAudio(src, name, row) {
+  if (isAif(src)) { if (currentRow) currentRow.classList.remove('playing'); currentRow = null; return; }  // browsers can't play AIFF
   if (currentRow) currentRow.classList.remove('playing');
   currentRow = row; if (row) row.classList.add('playing');
   currentSrcKey = src;
@@ -1783,6 +1790,15 @@ async function setEditor(rel, name, scope = 'root') {
   const seq = (editor.seq = (editor.seq || 0) + 1);   // guards against out-of-order decodes
   editor.rel = rel; editor.name = name; editor.scope = scope;
   editor.buf = null; editor.peaks = null; editor.combined = null;   // single-file (editable) mode
+  if (isAif(name)) {                                   // browsers can't decode AIFF — show a note, no waveform
+    $('#edit-tools').classList.add('hidden');
+    $('#editor').classList.remove('hidden');
+    $('#insp-empty').classList.add('hidden');
+    $('#insp-sub').textContent = prettyName(name);
+    drawWave();                                        // clears the canvas (no buffer)
+    $('#edit-info').innerHTML = '<span class="edit-warn">AIF files not supported yet — no preview or editing in the browser. You can still rename, move or delete it.</span>';
+    return;
+  }
   $('#edit-tools').classList.remove('hidden');
   editor.sel = { start: 0, end: 1 }; editor.fadeIn = 0; editor.fadeOut = 0; editor.normalize = false;
   $('#fade-in').value = 0; $('#fade-out').value = 0;

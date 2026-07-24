@@ -393,6 +393,10 @@ input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 4
 .file-row.ignored { opacity: .55; }
 .file-row.ignored:hover { opacity: .8; }
 .ignored-tag { color: var(--danger); font-size: 9px; margin-left: 6px; letter-spacing: .02em; }
+/* AIFF: managed but not previewable/editable in the browser — shown greyed */
+.unsupported { opacity: .5; }
+.unsupported:hover { opacity: .72; }
+.file-row.unsupported .file-name::after, .stage-item.unsupported .nm::after { content: " · aif"; color: var(--gold-dim); font-size: 9px; }
 
 /* ---- scene sub-tabs + preset editor ---- */
 .scene-subtabs { display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid var(--line-soft); margin-bottom: -6px; }

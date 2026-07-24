@@ -29,7 +29,7 @@ function baseOf(p) { return p.slice(p.lastIndexOf('/') + 1); }
 function cleanStem(s) { return s.replace(/\s+/g, ''); }
 function slotRelPath(kind, lib, bank, cell) {
   return kind === 'scene' ? `_arbhar_scenes/${bank}_${cell}_scene`
-    : `${LIB_FOLDERS[(lib || 1) - 1]}/${bank}_${cell}_sample`;
+    : `${libFolder(lib || 1)}/${bank}_${cell}_sample`;
 }
 
 // Parse a WAV header (first bytes) → { sampleRate, bits, channels } | null
@@ -315,6 +315,37 @@ async function apiReorderSlot(b) {
   }
   return { ok: true };
 }
+// Move every file of a folder tree into another (uses FileSystemFileHandle.move — a filesystem
+// rename, not a byte copy), recreating subfolders. The browser can't rename a directory directly.
+async function moveDirContents(srcDir, destDir) {
+  const entries = [];
+  for await (const [name, h] of srcDir.entries()) entries.push([name, h]);
+  for (const [name, h] of entries) {
+    if (h.kind === 'directory') {
+      const sub = await destDir.getDirectoryHandle(name, { create: true });
+      await moveDirContents(h, sub);
+      await srcDir.removeEntry(name, { recursive: true });
+    } else {
+      await h.move(destDir);
+    }
+  }
+}
+// Make library `target` the active one: park the current active under its number, move the
+// target's content into the bare `_arbhar_library`. Content is moved (renamed), not copied.
+async function apiActivateLib(b) {
+  const cur = await detectActiveLib();
+  const target = b.target;
+  if (target === cur) return { ok: true, active: cur };
+  const bare = await dirByPath(rootHandle, '_arbhar_library', true);
+  const parked = await dirByPath(rootHandle, `_arbhar_library_${cur}`, true);
+  await moveDirContents(bare, parked);
+  const targetDir = await tryDir(rootHandle, `_arbhar_library_${target}`);
+  if (targetDir) {
+    await moveDirContents(targetDir, bare);
+    await rootHandle.removeEntry(`_arbhar_library_${target}`, { recursive: true });
+  }
+  return { ok: true, active: target };
+}
 
 const api = {
   async get(url) {
@@ -333,7 +364,7 @@ const api = {
       '/api/staging/mkdir': apiMkdir, '/api/staging/move': apiMove,
       '/api/swap-slots': apiSwapSlots, '/api/swap-layers': apiSwapLayers,
       '/api/swap-scenes': apiSwapScenes, '/api/swap-banks': apiSwapBanks,
-      '/api/reorder-slot': apiReorderSlot,
+      '/api/reorder-slot': apiReorderSlot, '/api/activate-lib': apiActivateLib,
     };
     if (map[path]) return map[path](body);
     throw new Error('Unknown POST ' + path);
@@ -359,6 +390,7 @@ const state = {
   sceneCell: 1,      // scenes: selected scene 1..6
   sceneLayer: 1,     // scenes: selected layer tile 1..6
   sceneTab: 'layers', // scenes sub-view: 'layers' | 'preset'
+  activeLib: 1,      // which library (1..6) is the module's active `_arbhar_library`
   expanded: new Set(), // expanded folder paths in the reserve tree
 };
 
@@ -393,8 +425,10 @@ function setupStatus(msg, err) {
   const s = $('#setup-status'); s.textContent = msg; s.className = 'picker-status' + (err ? '' : ' good');
 }
 async function computePresent() {
+  state.activeLib = await detectActiveLib();
   const present = {};
-  for (const f of [...LIB_FOLDERS, '_arbhar_scenes']) present[f] = !!(await tryDir(rootHandle, f));
+  for (let n = 1; n <= 6; n++) present[libFolder(n)] = !!(await tryDir(rootHandle, libFolder(n)));
+  present['_arbhar_scenes'] = !!(await tryDir(rootHandle, '_arbhar_scenes'));
   return present;
 }
 async function ensurePermission(handle) {
@@ -472,8 +506,8 @@ function buildTabs() {
   tabs.innerHTML = '';
   for (let i = 1; i <= 6; i++) {
     const b = document.createElement('button');
-    b.className = 'tab';
-    b.textContent = 'Library ' + i;
+    b.className = 'tab' + (i === state.activeLib ? ' active-lib' : '');
+    b.innerHTML = 'Library ' + i + (i === state.activeLib ? ' <span class="lib-dot" title="Active library (loaded by the module)">●</span>' : '');
     b.onclick = () => selectTab('library', i);
     b.dataset.key = 'library' + i;
     tabs.appendChild(b);
@@ -511,9 +545,42 @@ async function loadGrid() {
 // Render whichever center view matches the active tab.
 function renderCurrent() {
   renderBanner();
+  updateActiveLibCtl();
   if (state.kind === 'scene') { renderSceneView(); }
   else { renderGrid(); renderInspector(); }
 }
+
+// The "active library" control in the grid header: a badge on the active one, a button on the others.
+function updateActiveLibCtl() {
+  const btn = $('#make-active');
+  if (state.kind !== 'library') { btn.classList.add('hidden'); return; }
+  btn.classList.remove('hidden');
+  if (state.lib === state.activeLib) {
+    btn.textContent = '● active library'; btn.classList.add('is-active'); btn.disabled = true;
+  } else {
+    btn.textContent = 'Make active'; btn.classList.remove('is-active'); btn.disabled = false;
+  }
+}
+
+async function makeActive() {
+  if (state.kind !== 'library' || state.lib === state.activeLib) return;
+  const target = state.lib, prev = state.activeLib;
+  const swap = async (to, label) => {
+    stopPlayback(); clearEditor();
+    await api.post('/api/activate-lib', { target: to });
+    state.activeLib = await detectActiveLib();
+    buildTabs();
+    await selectTab('library', to);
+    return label;
+  };
+  try {
+    await swap(target);
+    toast(`Library ${target} is now active.`, false, async () => {
+      try { await swap(prev); toast('Reverted.'); } catch (e) { toast(e.message, true); }
+    });
+  } catch (e) { toast(e.message, true); }
+}
+$('#make-active').onclick = makeActive;
 
 // Shared warning banner when the tab's backing folder is missing at the root.
 function renderBanner() {
@@ -533,8 +600,19 @@ function renderBanner() {
 
 function cellAt(bank, cell) { return state.cells.find((c) => c.bank === bank && c.cell === cell); }
 
-const LIB_FOLDERS = ['_arbhar_library', '_arbhar_library_2', '_arbhar_library_3', '_arbhar_library_4', '_arbhar_library_5', '_arbhar_library_6'];
-function currentFolderName() { return state.kind === 'scene' ? '_arbhar_scenes' : LIB_FOLDERS[state.lib - 1]; }
+// The active library is the folder named `_arbhar_library` (the only one the module loads from).
+// The others are parked as `_arbhar_library_<n>`; the number preserves each library's identity.
+function libFolder(n) { return n === state.activeLib ? '_arbhar_library' : `_arbhar_library_${n}`; }
+function currentFolderName() { return state.kind === 'scene' ? '_arbhar_scenes' : libFolder(state.lib); }
+// The active library's identity = the suffix (1..6) that has no `_arbhar_library_<n>` folder
+// (its content lives in the bare `_arbhar_library`). Factory: only `_1` missing → library 1 active.
+async function detectActiveLib() {
+  if (!(await tryDir(rootHandle, '_arbhar_library'))) return 1;
+  const missing = [];
+  for (let n = 1; n <= 6; n++) if (!(await tryDir(rootHandle, `_arbhar_library_${n}`))) missing.push(n);
+  if (missing.length === 1) return missing[0];
+  return missing.includes(1) ? 1 : (missing[0] || 1);
+}
 
 function renderGrid() {
   $('#grid-title').textContent = 'Library ' + state.lib;
@@ -1114,7 +1192,7 @@ function fileRow(f, bank, cell, ctx = {}) {
 
 function slotRel(bank, cell) {
   if (state.kind === 'scene') return `_arbhar_scenes/${bank}_${cell}_scene`;
-  return `${LIB_FOLDERS[state.lib - 1]}/${bank}_${cell}_sample`;
+  return `${libFolder(state.lib)}/${bank}_${cell}_sample`;
 }
 
 // Estimate a PCM WAV's duration from its header (sampleRate/channels/bits) + file size — no decode.

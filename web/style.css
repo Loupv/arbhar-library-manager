@@ -124,6 +124,8 @@ html, body {
 }
 .tab:hover { color: var(--text); border-color: var(--line); }
 .tab.active { background: var(--gold); color: #1a1409; border-color: var(--gold); font-weight: 500; }
+.tab .lib-dot { color: var(--gold); font-size: 9px; vertical-align: middle; margin-left: 2px; }
+.tab.active .lib-dot { color: #1a1409; }
 .tab.scenes.active { background: var(--gold-br); }
 
 .workspace {
@@ -206,6 +208,8 @@ html, body {
 .grid-wrap { padding: 22px; overflow: auto; display: flex; flex-direction: column; min-height: 0; }
 .grid-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px; }
 .grid-head h2 { margin: 0; font-size: 20px; font-weight: 400; letter-spacing: .04em; }
+.make-active { align-self: center; }
+.make-active.is-active { background: none; border-color: transparent; color: var(--gold); cursor: default; opacity: 1; padding-left: 0; padding-right: 0; }
 .grid-legend { color: var(--muted); font-size: 12px; }
 .grid-legend b { color: var(--gold-br); font-weight: 500; }
 .kbd-hint { margin-left: auto; color: var(--muted); font-size: 11px; }

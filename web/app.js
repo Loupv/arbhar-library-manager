@@ -2065,14 +2065,28 @@ async function applyEdit() {
   canvas.addEventListener('pointerup', () => { editor.drag = null; });
 })();
 
-// Drop a reserve sample (or Finder files) onto the editor's file list → add to the selected slot.
+// Drop a reserve sample (or Finder files) onto the editor's file list → add to the selected slot,
+// at the position where it is dropped (insert into the stack, not just append).
 (function initInspectorListDrop() {
   const list = $('#insp-list');
   const canAdd = (dt) => state.kind !== 'scene' && state.selected && (dt.types.includes('application/x-arbhar-staging') || dt.types.includes('Files'));
-  list.addEventListener('dragover', (e) => { if (!canAdd(e.dataTransfer)) return; e.preventDefault(); list.classList.add('list-drop-over'); });
-  list.addEventListener('dragleave', (e) => { if (!list.contains(e.relatedTarget)) list.classList.remove('list-drop-over'); });
+  const rows = () => [...list.querySelectorAll('.file-row')];
+  const idxAt = (y) => { const rs = rows(); for (let i = 0; i < rs.length; i++) { const r = rs[i].getBoundingClientRect(); if (y < r.top + r.height / 2) return i; } return rs.length; };
+  const clearMarks = () => rows().forEach((r) => r.classList.remove('insert-before', 'insert-after'));
+  const mark = (y) => {
+    clearMarks(); const rs = rows(); if (!rs.length) return;
+    const i = idxAt(y);
+    if (i < rs.length) rs[i].classList.add('insert-before');
+    else rs[rs.length - 1].classList.add('insert-after');
+  };
+  list.addEventListener('dragover', (e) => {
+    if (!canAdd(e.dataTransfer)) return;
+    e.preventDefault(); list.classList.add('list-drop-over');
+    if (e.dataTransfer.types.includes('application/x-arbhar-staging')) mark(e.clientY);
+  });
+  list.addEventListener('dragleave', (e) => { if (!list.contains(e.relatedTarget)) { list.classList.remove('list-drop-over'); clearMarks(); } });
   list.addEventListener('drop', async (e) => {
-    list.classList.remove('list-drop-over');
+    list.classList.remove('list-drop-over'); clearMarks();
     if (state.kind === 'scene' || !state.selected) return;
     const { bank, cell } = state.selected;
     const stg = e.dataTransfer.getData('application/x-arbhar-staging');
@@ -2080,9 +2094,19 @@ async function applyEdit() {
       e.preventDefault(); e.stopPropagation();
       const item = JSON.parse(stg);
       if (item.isDir) { toast('Drop a sample, not a folder.', true); return; }
+      const targetIndex = idxAt(e.clientY);        // position in the stack to insert at
       try {
-        await api.post('/api/copy-from-staging', { path: item.path, kind: state.kind, lib: state.lib, bank, cell });
-        await loadGrid(); selectSlot(bank, cell, { play: false });
+        const r = await api.post('/api/copy-from-staging', { path: item.path, kind: state.kind, lib: state.lib, bank, cell });
+        await loadGrid();
+        const c = cellAt(bank, cell);
+        const order = c ? c.files.map((f) => f.name) : [];
+        const from = order.indexOf(r.name);         // the freshly-added file (currently last)
+        if (from >= 0 && targetIndex < order.length && targetIndex !== from) {
+          order.splice(from, 1); order.splice(targetIndex, 0, r.name);
+          await commitSlotOrder(bank, cell, order); // reindexes N_ prefixes + rebuilds the preview
+        } else {
+          selectSlot(bank, cell, { play: false });
+        }
         toast(`Slot ${bank}.${cell} ← “${item.name}” added.`);
       } catch (err) { toast(err.message, true); }
       return;

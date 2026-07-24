@@ -363,6 +363,8 @@ input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 4
 .file-row:hover { border-color: var(--gold-dim); }
 .file-row.playing { border-color: var(--gold); }
 .file-row.reorder-over { border-color: var(--gold-br); box-shadow: inset 0 2px 0 var(--gold-br); }
+.file-row.insert-before { box-shadow: inset 0 3px 0 var(--gold-br); }
+.file-row.insert-after { box-shadow: inset 0 -3px 0 var(--gold-br); }
 .file-row .play { color: var(--gold); font-size: 12px; }
 .file-main { flex: 1; min-width: 0; }
 .file-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

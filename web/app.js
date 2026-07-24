@@ -315,8 +315,10 @@ async function apiReorderSlot(b) {
   }
   return { ok: true };
 }
-// Move every file of a folder tree into another (uses FileSystemFileHandle.move — a filesystem
-// rename, not a byte copy), recreating subfolders. The browser can't rename a directory directly.
+// Move every file of a folder tree into another, recreating subfolders. Tries the cheap
+// FileSystemFileHandle.move() (a filesystem rename); real removable drives (exFAT/FAT) often
+// don't support cross-directory move, so it falls back to copy-bytes + delete. The browser
+// can't rename a directory directly, which is why this is per-file.
 async function moveDirContents(srcDir, destDir) {
   const entries = [];
   for await (const [name, h] of srcDir.entries()) entries.push([name, h]);
@@ -326,7 +328,14 @@ async function moveDirContents(srcDir, destDir) {
       await moveDirContents(h, sub);
       await srcDir.removeEntry(name, { recursive: true });
     } else {
-      await h.move(destDir);
+      let moved = false;
+      try { await h.move(destDir, name); moved = true; } catch { moved = false; }
+      if (!moved) {                                   // fallback: copy the bytes, then drop the source
+        const bytes = await (await h.getFile()).arrayBuffer();
+        const nh = await destDir.getFileHandle(name, { create: true });
+        const w = await nh.createWritable(); await w.write(bytes); await w.close();
+        await srcDir.removeEntry(name);
+      }
     }
   }
 }
